@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { AnnotInfo, AnnotSpec, AnnotStyle, Point } from '../pdf/protocol'
+import type { AnnotInfo, AnnotSpec, AnnotStyle, FieldChange, Point } from '../pdf/protocol'
 import type { Tool } from './tools'
 
 export interface AnnotSelection {
@@ -9,7 +9,7 @@ export interface AnnotSelection {
   info: AnnotInfo | null
 }
 
-/** What the per-page annotation layers need from the app. */
+/** What the per-page annotation and form layers need from the app. */
 export interface AnnotationController {
   tool: Tool
   style: AnnotStyle
@@ -20,6 +20,7 @@ export interface AnnotationController {
   syncAnnotations(pageId: number, annots: AnnotInfo[]): void
   create(pageId: number, spec: AnnotSpec): void
   moveSelected(offset: Point): void
+  fillField(pageId: number, widgetId: number, change: FieldChange): void
 }
 
 export const AnnotationContext = createContext<AnnotationController | null>(null)

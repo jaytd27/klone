@@ -7,7 +7,7 @@ import { Sidebar } from './components/Sidebar'
 import { Toolbar } from './components/Toolbar'
 import { VIEWER_PADDING, Viewer, type ViewerHandle } from './components/Viewer'
 import { pdf } from './pdf/client'
-import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, OpenResult, Point } from './pdf/protocol'
+import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, FieldChange, OpenResult, Point } from './pdf/protocol'
 import { MAX_SCALE, MIN_SCALE, ZOOM_PRESETS, clampScale } from './zoom'
 
 interface OpenDocument extends DocState {
@@ -75,6 +75,11 @@ export default function App() {
   const insertInputRef = useRef<HTMLInputElement>(null)
   /** Guards against overlapping operations computed from stale page indices. */
   const opRunning = useRef(false)
+  /**
+   * Form edits run in order on their own chain rather than through `run`, so
+   * tabbing quickly between fields never drops a value.
+   */
+  const formQueue = useRef<Promise<void>>(Promise.resolve())
   /** Page to scroll to once the viewer has laid out the next document state. */
   const pendingScroll = useRef<number | null>(null)
 
@@ -288,6 +293,19 @@ export default function App() {
     })
   }, [annotSelection, run, applyState])
 
+  const fillField = useCallback(
+    (pageId: number, widgetId: number, change: FieldChange) => {
+      formQueue.current = formQueue.current.then(async () => {
+        try {
+          applyState(await pdf.setField(pageId, widgetId, change))
+        } catch (err) {
+          if ((err as Error)?.name !== 'AbortError') setError(`Couldn't fill in the field: ${errorMessage(err)}`)
+        }
+      })
+    },
+    [applyState],
+  )
+
   const changeToolStyle = (patch: Partial<AnnotStyle>) => {
     if (tool !== 'select') setToolStyles((styles) => ({ ...styles, [tool]: { ...styles[tool], ...patch } }))
   }
@@ -302,8 +320,9 @@ export default function App() {
       syncAnnotations,
       create: createAnnot,
       moveSelected: (offset: Point) => updateSelectedAnnot({ offset }),
+      fillField,
     }),
-    [tool, toolStyle, busy, annotSelection, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot],
+    [tool, toolStyle, busy, annotSelection, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot, fillField],
   )
 
   const setZoom = useCallback((value: number | 'fit') => {

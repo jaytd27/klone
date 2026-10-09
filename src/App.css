@@ -238,6 +238,86 @@
   pointer-events: none;
 }
 
+/* ---------- Form fields ---------- */
+
+.form-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.form-field {
+  position: absolute;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: rgba(47, 111, 222, 0.1);
+  /* Annotation tools draw over fields; only the select tool fills them in. */
+  pointer-events: none;
+}
+
+.form-layer--active .form-field {
+  pointer-events: auto;
+}
+
+.form-layer--active .form-field:hover {
+  border-color: rgba(47, 111, 222, 0.6);
+}
+
+.form-field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.form-field--text {
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.15;
+  /* The rendered PDF shows the value until the field is being edited. */
+  color: transparent;
+  caret-color: transparent;
+  resize: none;
+  overflow: hidden;
+}
+
+textarea.form-field--text {
+  padding-top: 2px !important;
+}
+
+.form-field--editing {
+  background: #fff;
+  color: #000;
+  caret-color: auto;
+}
+
+.form-field--toggle {
+  padding: 0;
+  cursor: pointer;
+}
+
+.form-field--choice {
+  appearance: none;
+  padding: 0;
+  color: transparent;
+  cursor: pointer;
+}
+
+.form-field--choice option {
+  color: #000;
+}
+
+.form-field--list {
+  padding: 0;
+  background: #fff;
+  color: #000;
+  font-family: Helvetica, Arial, sans-serif;
+  overflow-y: auto;
+}
+
+.form-field--signature {
+  background: rgba(255, 159, 28, 0.12);
+  border: 1px dashed rgba(255, 159, 28, 0.8);
+}
+
 /* ---------- Banner ---------- */
 
 .banner {

@@ -62,6 +62,31 @@ export interface DocState {
   dirty: boolean
 }
 
+export type FieldKind = 'text' | 'checkbox' | 'radio' | 'combo' | 'list' | 'signature' | 'button'
+
+/** One widget (the on-page box) of an AcroForm field. */
+export interface FieldInfo {
+  /** PDF object number of the widget. */
+  id: number
+  name: string
+  kind: FieldKind
+  bounds: Rect
+  value: string
+  /** Checkboxes and radio buttons: whether this widget is on. */
+  checked: boolean
+  /** Choice fields: export value and display label of each option. */
+  options: { value: string; label: string }[]
+  multiline: boolean
+  password: boolean
+  readOnly: boolean
+  /** 0 when unlimited. */
+  maxLength: number
+  /** Font size in points; 0 means "fit to the field". */
+  fontSize: number
+}
+
+export type FieldChange = { text: string } | { choice: string } | { toggle: true }
+
 export type WorkerRequest =
   | { type: 'open'; data: ArrayBuffer }
   | { type: 'authenticate'; password: string }
@@ -80,6 +105,8 @@ export type WorkerRequest =
   | { type: 'createAnnot'; page: number; spec: AnnotSpec; style: AnnotStyle }
   | { type: 'updateAnnot'; page: number; annot: number; patch: AnnotPatch }
   | { type: 'deleteAnnot'; page: number; annot: number }
+  | { type: 'listFields'; page: number }
+  | { type: 'setField'; page: number; widget: number; change: FieldChange }
 
 export type OpenResult = { needsPassword: true } | ({ needsPassword: false; title: string | null } & DocState)
 
@@ -107,6 +134,8 @@ export interface ResultMap {
   createAnnot: { state: DocState; annot: number }
   updateAnnot: DocState
   deleteAnnot: DocState
+  listFields: FieldInfo[]
+  setField: DocState
 }
 
 /** Sent once by the worker when MuPDF has loaded and it can take requests. */

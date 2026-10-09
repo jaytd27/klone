@@ -8,6 +8,9 @@ import type {
   AnnotSpec,
   AnnotStyle,
   DocState,
+  FieldChange,
+  FieldInfo,
+  FieldKind,
   OpenResult,
   PageInfo,
   Point,
@@ -135,11 +138,14 @@ function authenticate(password: string): OpenResult {
 }
 
 /**
- * Runs `fn` as one undoable step and returns the new document state.
- * `page` names the only page whose content changes, which keeps cached text
- * for the others; without it the whole document is assumed to change.
+ * What a change can affect: one page's look (a page id), every page's look
+ * but no text ('appearance', e.g. form fields that span pages), or anything
+ * ('document', the default).
  */
-function mutate(name: string, fn: (d: mupdf.PDFDocument) => void, page?: number): DocState {
+type ChangeScope = number | 'appearance' | 'document'
+
+/** Runs `fn` as one undoable step and returns the new document state. */
+function mutate(name: string, fn: (d: mupdf.PDFDocument) => void, scope: ChangeScope = 'document'): DocState {
   const d = requireDoc()
   // A new step after undoing past the save point discards that save point.
   if (d.getJournal().position < savedPosition) savedPosition = -1
@@ -152,11 +158,11 @@ function mutate(name: string, fn: (d: mupdf.PDFDocument) => void, page?: number)
     throw err
   } finally {
     clearPageCache()
-    if (page === undefined) {
-      clearTextCache()
-      docRev++
+    if (typeof scope === 'number') {
+      pageRevs.set(scope, (pageRevs.get(scope) ?? 0) + 1)
     } else {
-      pageRevs.set(page, (pageRevs.get(page) ?? 0) + 1)
+      if (scope === 'document') clearTextCache()
+      docRev++
     }
   }
   return state()
@@ -447,6 +453,76 @@ function deleteAnnot(pageId: number, annotId: number): DocState {
   )
 }
 
+// ---------- Form fields ----------
+
+function fieldKind(widget: mupdf.PDFWidget): FieldKind {
+  switch (widget.getFieldType()) {
+    case 'text':
+      return 'text'
+    case 'checkbox':
+      return 'checkbox'
+    case 'radiobutton':
+      return 'radio'
+    case 'combobox':
+      return 'combo'
+    case 'listbox':
+      return 'list'
+    case 'signature':
+      return 'signature'
+    default:
+      return 'button'
+  }
+}
+
+function describeField(widget: mupdf.PDFWidget): FieldInfo {
+  const kind = fieldKind(widget)
+  const obj = widget.getObject()
+  const state = obj.get('AS')
+  let options: FieldInfo['options'] = []
+  if (kind === 'combo' || kind === 'list') {
+    const labels = widget.getOptions()
+    const values = widget.getOptions(true)
+    options = labels.map((label, i) => ({ value: values[i] || label, label }))
+  }
+  return {
+    id: obj.asIndirect(),
+    name: widget.getName(),
+    kind,
+    bounds: widget.getBounds(),
+    value: widget.getValue(),
+    checked: state.isName() && state.asName() !== 'Off',
+    options,
+    multiline: kind === 'text' && widget.isMultiline(),
+    password: kind === 'text' && widget.isPassword(),
+    readOnly: widget.isReadOnly(),
+    maxLength: kind === 'text' ? widget.getMaxLen() : 0,
+    fontSize: widget.getDefaultAppearance().size,
+  }
+}
+
+function listFields(pageId: number): FieldInfo[] {
+  return pageById(pageId).getWidgets().map(describeField)
+}
+
+function setField(pageId: number, widgetId: number, change: FieldChange): DocState {
+  // A field can have widgets on several pages, so redraw them all.
+  return mutate(
+    'Fill in form',
+    () => {
+      const widget = pageById(pageId)
+        .getWidgets()
+        .find((w) => w.getObject().asIndirect() === widgetId)
+      if (!widget) throw new StaleError(`Form field ${widgetId} no longer exists`)
+      if (widget.isReadOnly()) throw new Error('This field is read-only')
+      if ('text' in change) widget.setTextValue(change.text)
+      else if ('choice' in change) widget.setChoiceValue(change.choice)
+      else widget.toggle()
+      widget.update()
+    },
+    'appearance',
+  )
+}
+
 function history(direction: 'undo' | 'redo'): DocState {
   const d = requireDoc()
   if (direction === 'undo' ? d.canUndo() : d.canRedo()) {
@@ -500,6 +576,10 @@ function handle(req: WorkerRequest): { result: unknown; transfer?: Transferable[
       return { result: updateAnnot(req.page, req.annot, req.patch) }
     case 'deleteAnnot':
       return { result: deleteAnnot(req.page, req.annot) }
+    case 'listFields':
+      return { result: listFields(req.page) }
+    case 'setField':
+      return { result: setField(req.page, req.widget, req.change) }
   }
 }
 

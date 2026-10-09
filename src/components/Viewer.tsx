@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react'
 import type { PageInfo } from '../pdf/protocol'
 import { AnnotationLayer } from './AnnotationLayer'
+import { FormLayer } from './FormLayer'
 import { PageCanvas } from './PageCanvas'
 
 // Must match the padding and gap of .viewer__pages in App.css.
@@ -115,6 +116,7 @@ export function Viewer({ ref, pages, scale, onCurrentPageChange, onWidthChange, 
         {pages.map((page) => (
           <PageCanvas key={page.id} page={page} scale={scale} root={container}>
             <AnnotationLayer page={page} scale={scale} />
+            <FormLayer page={page} scale={scale} />
           </PageCanvas>
         ))}
       </div>

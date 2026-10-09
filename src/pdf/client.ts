@@ -11,6 +11,8 @@ import type {
   AnnotSpec,
   AnnotStyle,
   DocState,
+  FieldChange,
+  FieldInfo,
   OpenResult,
   Point,
   Quad,
@@ -148,6 +150,14 @@ export class PdfClient {
 
   deleteAnnot(page: number, annot: number): Promise<DocState> {
     return this.send({ type: 'deleteAnnot', page, annot })
+  }
+
+  listFields(page: number): Promise<FieldInfo[]> {
+    return this.send({ type: 'listFields', page })
+  }
+
+  setField(page: number, widget: number, change: FieldChange): Promise<DocState> {
+    return this.send({ type: 'setField', page, widget, change })
   }
 
   /** Renders the page with object number `id` at `scale` device pixels per point. */
