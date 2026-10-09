@@ -5,7 +5,7 @@
 // requests whose AbortSignal fires before they are sent are dropped, so fast
 // scrolling doesn't leave a backlog of pages nobody is looking at.
 
-import type { OpenResult, RenderResult, ResultMap, WorkerRequest, WorkerResponse } from './protocol'
+import type { DocState, OpenResult, RenderResult, ResultMap, WorkerReady, WorkerRequest, WorkerResponse } from './protocol'
 
 interface Pending {
   resolve: (value: unknown) => void
@@ -13,7 +13,7 @@ interface Pending {
 }
 
 interface QueuedRender {
-  page: number
+  id: number
   scale: number
   signal?: AbortSignal
   resolve: (value: RenderResult) => void
@@ -30,23 +30,40 @@ export class PdfClient {
   private pending = new Map<number, Pending>()
   private renderQueue: QueuedRender[] = []
   private renderInFlight = false
+  /** Messages held until the worker reports that MuPDF has loaded. */
+  private outbox: { message: unknown; transfer: Transferable[] }[] | null = []
 
   constructor() {
-    this.worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+    this.worker.onmessage = (event: MessageEvent<WorkerResponse | WorkerReady>) => {
       const msg = event.data
+      if ('ready' in msg) {
+        for (const { message, transfer } of this.outbox ?? []) this.worker.postMessage(message, transfer)
+        this.outbox = null
+        return
+      }
       const entry = this.pending.get(msg.id)
       if (!entry) return
       this.pending.delete(msg.id)
       if (msg.ok) entry.resolve(msg.result)
-      else entry.reject(new Error(msg.error))
+      else entry.reject(msg.stale ? abortError() : new Error(msg.error))
     }
+    // Errors that escape the worker's handler would otherwise leave callers
+    // waiting forever.
+    const failAll = (reason: string) => {
+      console.error('PDF worker error:', reason)
+      for (const entry of this.pending.values()) entry.reject(new Error(reason))
+      this.pending.clear()
+    }
+    this.worker.onerror = (event) => failAll(event.message || 'The PDF engine crashed')
+    this.worker.onmessageerror = () => failAll('A message from the PDF engine could not be read')
   }
 
   private send<T extends WorkerRequest>(req: T, transfer: Transferable[] = []): Promise<ResultMap[T['type']]> {
     const id = this.nextId++
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject })
-      this.worker.postMessage({ id, req }, transfer)
+      if (this.outbox) this.outbox.push({ message: { id, req }, transfer })
+      else this.worker.postMessage({ id, req }, transfer)
     })
   }
 
@@ -64,10 +81,45 @@ export class PdfClient {
     return this.send({ type: 'save' })
   }
 
-  render(page: number, scale: number, signal?: AbortSignal): Promise<RenderResult> {
+  /** Builds a new PDF from the pages at `pages` (indices). */
+  extract(pages: number[]): Promise<Uint8Array<ArrayBuffer>> {
+    return this.send({ type: 'extract', pages })
+  }
+
+  rotate(pages: number[], degrees: number): Promise<DocState> {
+    return this.send({ type: 'rotate', pages, degrees })
+  }
+
+  deletePages(pages: number[]): Promise<DocState> {
+    return this.send({ type: 'delete', pages })
+  }
+
+  /** Moves `pages` (indices) to sit before the page currently at index `to`. */
+  move(pages: number[], to: number): Promise<DocState> {
+    return this.send({ type: 'move', pages, to })
+  }
+
+  insertPdf(data: ArrayBuffer, at: number): Promise<DocState> {
+    return this.send({ type: 'insertPdf', data, at }, [data])
+  }
+
+  insertBlank(at: number, width: number, height: number): Promise<DocState> {
+    return this.send({ type: 'insertBlank', at, width, height })
+  }
+
+  undo(): Promise<DocState> {
+    return this.send({ type: 'undo' })
+  }
+
+  redo(): Promise<DocState> {
+    return this.send({ type: 'redo' })
+  }
+
+  /** Renders the page with object number `id` at `scale` device pixels per point. */
+  render(id: number, scale: number, signal?: AbortSignal): Promise<RenderResult> {
     if (signal?.aborted) return Promise.reject(abortError())
     return new Promise((resolve, reject) => {
-      this.renderQueue.push({ page, scale, signal, resolve, reject })
+      this.renderQueue.push({ id, scale, signal, resolve, reject })
       this.pumpRenders()
     })
   }
@@ -82,7 +134,7 @@ export class PdfClient {
     if (!job) return
     const current = job
     this.renderInFlight = true
-    this.send({ type: 'render', page: current.page, scale: current.scale })
+    this.send({ type: 'render', id: current.id, scale: current.scale })
       .then(
         (result) => (current.signal?.aborted ? current.reject(abortError()) : current.resolve(result)),
         current.reject,

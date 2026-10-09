@@ -4,16 +4,17 @@ An open-source, in-browser PDF editor built on [MuPDF.js](https://mupdf.readthed
 
 > Status: early development.
 
-## Planned features
+## Features
 
-- View and render PDFs
-- Page operations: merge, split, reorder, rotate, delete
-- Annotations: highlight, underline, strikeout, sticky notes, shapes, freehand ink
-- Form filling (AcroForm)
-- Add text, images, signatures and watermarks
-- True redaction (content is removed, not just covered)
-- OCR for scanned documents (Tesseract.js)
-- In-place editing of existing text
+- [x] View and render PDFs (thumbnails, zoom, fit width)
+- [x] Page operations: reorder (drag and drop), rotate, delete, insert blank pages, insert/merge other PDFs, extract pages to a new PDF
+- [x] Undo / redo
+- [ ] Annotations: highlight, underline, strikeout, sticky notes, shapes, freehand ink
+- [ ] Form filling (AcroForm)
+- [ ] Add text, images, signatures and watermarks
+- [ ] True redaction (content is removed, not just covered)
+- [ ] OCR for scanned documents (Tesseract.js)
+- [ ] In-place editing of existing text
 
 ## Development
 

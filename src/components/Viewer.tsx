@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react'
-import type { PageSize } from '../pdf/protocol'
+import type { PageInfo } from '../pdf/protocol'
 import { PageCanvas } from './PageCanvas'
 
 // Must match the padding and gap of .viewer__pages in App.css.
@@ -12,7 +12,7 @@ export interface ViewerHandle {
 
 interface Props {
   ref?: Ref<ViewerHandle>
-  pages: PageSize[]
+  pages: PageInfo[]
   scale: number
   onCurrentPageChange(index: number): void
   onWidthChange(width: number): void
@@ -20,7 +20,7 @@ interface Props {
   onZoom(factor: number): void
 }
 
-function pageTops(pages: PageSize[], scale: number): number[] {
+function pageTops(pages: PageInfo[], scale: number): number[] {
   const tops: number[] = []
   let y = VIEWER_PADDING
   for (const page of pages) {
@@ -79,6 +79,9 @@ export function Viewer({ ref, pages, scale, onCurrentPageChange, onWidthChange, 
     }
   }, [container, tops, onCurrentPageChange])
 
+  // Pages can be added, removed or resized without any scrolling.
+  useEffect(handleScroll, [handleScroll])
+
   useEffect(() => {
     if (!container) return
     const observer = new ResizeObserver(([entry]) => onWidthChange(entry.contentRect.width))
@@ -108,8 +111,8 @@ export function Viewer({ ref, pages, scale, onCurrentPageChange, onWidthChange, 
       onScroll={handleScroll}
     >
       <div className="viewer__pages">
-        {pages.map((size, index) => (
-          <PageCanvas key={index} index={index} size={size} scale={scale} root={container} />
+        {pages.map((page) => (
+          <PageCanvas key={page.id} page={page} scale={scale} root={container} />
         ))}
       </div>
     </div>

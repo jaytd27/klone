@@ -10,7 +10,11 @@ interface Props {
   fitWidth: boolean
   sidebarOpen: boolean
   busy: boolean
+  canUndo: boolean
+  canRedo: boolean
   onOpen(): void
+  onUndo(): void
+  onRedo(): void
   onDownload(): void
   onToggleSidebar(): void
   onGoToPage(index: number): void
@@ -36,6 +40,16 @@ export function Toolbar(props: Props) {
         <button className="button" onClick={props.onOpen} disabled={props.busy} title="Open (Ctrl+O)">
           <Icon name="open" /><span className="button__label">Open</span>
         </button>
+        {hasDoc && (
+          <>
+            <button className="icon-button" onClick={props.onUndo} disabled={props.busy || !props.canUndo} title="Undo (Ctrl+Z)">
+              <Icon name="undo" />
+            </button>
+            <button className="icon-button" onClick={props.onRedo} disabled={props.busy || !props.canRedo} title="Redo (Ctrl+Y)">
+              <Icon name="redo" />
+            </button>
+          </>
+        )}
         {fileName && <span className="file-name" title={fileName}>{fileName}</span>}
       </div>
 
