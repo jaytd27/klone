@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { pdf } from '../pdf/client'
 import type { PageInfo } from '../pdf/protocol'
 
@@ -13,17 +13,21 @@ interface Props {
   scale: number
   /** Scroll container used to decide which pages are near the viewport. */
   root: Element | null
+  /** Drawn on top of the page while it is near the viewport. */
+  children?: ReactNode
 }
 
-export function PageCanvas({ page, scale, root }: Props) {
+export function PageCanvas({ page, scale, root, children }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   /** What the canvas currently shows, or null when it is empty. */
-  const rendered = useRef<{ scale: number; rotation: number } | null>(null)
+  const rendered = useRef<{ scale: number; content: string } | null>(null)
   const [nearViewport, setNearViewport] = useState(false)
   const [drawn, setDrawn] = useState(false)
 
-  const { id, width, height, rotation } = page
+  const { id, width, height } = page
+  // Rotation and revision together identify what the page looks like.
+  const content = `${page.rotation}:${page.rev}`
   const cssWidth = Math.round(width * scale)
   const cssHeight = Math.round(height * scale)
 
@@ -56,18 +60,18 @@ export function PageCanvas({ page, scale, root }: Props) {
     const maxScale = Math.sqrt(MAX_CANVAS_PIXELS / (width * height))
     const target = Math.min(scale * dpr, maxScale)
     const current = rendered.current
-    if (current?.scale === target && current.rotation === rotation) return
+    if (current?.scale === target && current.content === content) return
 
     const controller = new AbortController()
-    // Only zoom changes are debounced; new or rotated content renders at once.
-    const delay = current && current.rotation === rotation ? RERENDER_DELAY_MS : 0
+    // Only zoom changes are debounced; changed content renders at once.
+    const delay = current && current.content === content ? RERENDER_DELAY_MS : 0
     const timer = setTimeout(() => {
       pdf.render(id, target, controller.signal).then(
         ({ width, height, pixels }) => {
           canvas.width = width
           canvas.height = height
           canvas.getContext('2d')!.putImageData(new ImageData(pixels, width, height), 0, 0)
-          rendered.current = { scale: target, rotation }
+          rendered.current = { scale: target, content }
           setDrawn(true)
         },
         (err) => {
@@ -80,11 +84,12 @@ export function PageCanvas({ page, scale, root }: Props) {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [nearViewport, id, scale, width, height, rotation])
+  }, [nearViewport, id, scale, width, height, content])
 
   return (
     <div ref={wrapperRef} className={`page ${drawn ? '' : 'page--loading'}`} style={{ width: cssWidth, height: cssHeight }}>
       <canvas ref={canvasRef} style={{ width: cssWidth, height: cssHeight }} />
+      {nearViewport && children}
     </div>
   )
 }

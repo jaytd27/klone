@@ -14,6 +14,16 @@ const paths = {
   filePlus: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M12 12v6M9 15h6',
   undo: 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
   redo: 'm15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3',
+  cursor: 'M6 3l12 9-5.5 1.2L15 19l-2.5 1.2-2.6-5.7L6 18z',
+  highlight: 'm9 15-2 2v3h3l2-2M9 15l7-11 4 3-7 11zM4 21h4',
+  underline: 'M7 4v6a5 5 0 0 0 10 0V4M5 20h14',
+  strikeout: 'M4 12h16M16.5 7.5A4 3 0 0 0 12 5c-2.8 0-4.5 1.4-4.5 3.2M7.5 16.5A4.5 3 0 0 0 12 19c2.8 0 4.5-1.4 4.5-3.2',
+  note: 'M4 5h16v11H10l-6 4z',
+  rect: 'M4 6h16v12H4z',
+  ellipse: 'M12 5c4.4 0 8 3.1 8 7s-3.6 7-8 7-8-3.1-8-7 3.6-7 8-7z',
+  line: 'M5 19 19 5',
+  arrow: 'M5 19 19 5M10 5h9v9',
+  ink: 'M3 17c2.5-5 4.5-7 6-4s2 6 4.5 1 3.5-7 7.5-6',
 } as const
 
 export type IconName = keyof typeof paths

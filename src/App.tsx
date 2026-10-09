@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import './App.css'
+import { AnnotationContext, type AnnotationController, type AnnotSelection } from './annotations/context'
+import { DEFAULT_STYLES, type DrawingTool, type Tool } from './annotations/tools'
+import { AnnotationBar } from './components/AnnotationBar'
 import { Sidebar } from './components/Sidebar'
 import { Toolbar } from './components/Toolbar'
 import { VIEWER_PADDING, Viewer, type ViewerHandle } from './components/Viewer'
 import { pdf } from './pdf/client'
-import type { DocState, OpenResult } from './pdf/protocol'
+import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, OpenResult, Point } from './pdf/protocol'
 import { MAX_SCALE, MIN_SCALE, ZOOM_PRESETS, clampScale } from './zoom'
 
 interface OpenDocument extends DocState {
@@ -63,6 +66,10 @@ export default function App() {
   const [fitWidth, setFitWidth] = useState(true)
   const [customScale, setCustomScale] = useState(1)
   const [viewerWidth, setViewerWidth] = useState(0)
+  const [tool, setTool] = useState<Tool>('select')
+  const [toolStyles, setToolStyles] = useState<Record<DrawingTool, AnnotStyle>>(DEFAULT_STYLES)
+  const [annotSelection, setAnnotSelection] = useState<AnnotSelection | null>(null)
+  const [focusComment, setFocusComment] = useState(false)
   const viewerRef = useRef<ViewerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const insertInputRef = useRef<HTMLInputElement>(null)
@@ -119,6 +126,7 @@ export default function App() {
     setDoc((prev) => (prev ? { ...prev, ...state } : prev))
     const ids = new Set(state.pages.map((p) => p.id))
     setPickedIds((prev) => options.pick ?? new Set([...prev].filter((id) => ids.has(id))))
+    setAnnotSelection((prev) => (prev && ids.has(prev.pageId) ? prev : null))
     if (options.scrollTo !== undefined) pendingScroll.current = Math.min(options.scrollTo, state.pages.length - 1)
   }, [])
 
@@ -135,6 +143,7 @@ export default function App() {
         }
         setDoc((prev) => ({ ...state, key: (prev?.key ?? 0) + 1, name: file.name }))
         setPickedIds(new Set())
+        setAnnotSelection(null)
         setCurrentPage(0)
         document.title = `${file.name} – Klone`
       })
@@ -221,6 +230,82 @@ export default function App() {
     [run, applyState],
   )
 
+  // ---------- Annotations ----------
+
+  const toolStyle = toolStyles[tool === 'select' ? 'rect' : tool]
+
+  const changeTool = useCallback((next: Tool) => {
+    setTool(next)
+    setAnnotSelection(null)
+  }, [])
+
+  const selectAnnot = useCallback((pageId: number, annot: AnnotInfo | null) => {
+    setAnnotSelection(annot ? { pageId, annotId: annot.id, info: annot } : null)
+    setFocusComment(false)
+  }, [])
+
+  const syncAnnotations = useCallback((pageId: number, annots: AnnotInfo[]) => {
+    setAnnotSelection((prev) => {
+      if (!prev || prev.pageId !== pageId) return prev
+      const info = annots.find((a) => a.id === prev.annotId)
+      if (!info) return null
+      return JSON.stringify(info) === JSON.stringify(prev.info) ? prev : { ...prev, info }
+    })
+  }, [])
+
+  const createAnnot = useCallback(
+    (pageId: number, spec: AnnotSpec) =>
+      void run("Couldn't add the annotation", async () => {
+        const { state, annot } = await pdf.createAnnot(pageId, spec, toolStyle)
+        applyState(state)
+        setAnnotSelection({ pageId, annotId: annot, info: null })
+        if (spec.kind === 'note') {
+          // Notes are one-off: go straight to typing the comment.
+          setFocusComment(true)
+          setTool('select')
+        }
+      }),
+    [run, applyState, toolStyle],
+  )
+
+  const updateSelectedAnnot = useCallback(
+    (patch: AnnotPatch) => {
+      const sel = annotSelection
+      if (!sel) return
+      void run("Couldn't change the annotation", async () =>
+        applyState(await pdf.updateAnnot(sel.pageId, sel.annotId, patch)),
+      )
+    },
+    [annotSelection, run, applyState],
+  )
+
+  const deleteSelectedAnnot = useCallback(() => {
+    const sel = annotSelection
+    if (!sel) return
+    void run("Couldn't delete the annotation", async () => {
+      applyState(await pdf.deleteAnnot(sel.pageId, sel.annotId))
+      setAnnotSelection(null)
+    })
+  }, [annotSelection, run, applyState])
+
+  const changeToolStyle = (patch: Partial<AnnotStyle>) => {
+    if (tool !== 'select') setToolStyles((styles) => ({ ...styles, [tool]: { ...styles[tool], ...patch } }))
+  }
+
+  const annotationController = useMemo<AnnotationController>(
+    () => ({
+      tool,
+      style: toolStyle,
+      busy,
+      selection: annotSelection,
+      select: selectAnnot,
+      syncAnnotations,
+      create: createAnnot,
+      moveSelected: (offset: Point) => updateSelectedAnnot({ offset }),
+    }),
+    [tool, toolStyle, busy, annotSelection, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot],
+  )
+
   const setZoom = useCallback((value: number | 'fit') => {
     if (value === 'fit') {
       setFitWidth(true)
@@ -253,9 +338,23 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) return
       const key = event.key.toLowerCase()
-      const inField = event.target instanceof HTMLElement && event.target.matches('input, textarea, select')
+      const target = event.target instanceof HTMLElement ? event.target : null
+      const inField = target?.matches('input, textarea, select') ?? false
+      if (!(event.ctrlKey || event.metaKey)) {
+        // The sidebar handles Delete for pages itself.
+        if (!doc || inField || target?.closest('.sidebar')) return
+        if (key === 'escape') {
+          if (annotSelection) setAnnotSelection(null)
+          else setTool('select')
+        } else if ((key === 'delete' || key === 'backspace') && annotSelection) {
+          deleteSelectedAnnot()
+        } else {
+          return
+        }
+        event.preventDefault()
+        return
+      }
       if (key === 'o') fileInputRef.current?.click()
       else if (!doc) return
       else if (key === 's') download()
@@ -273,7 +372,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [doc, download, history, zoomStep, setZoom])
+  }, [doc, download, history, zoomStep, setZoom, annotSelection, deleteSelectedAnnot])
 
   return (
     <div
@@ -343,6 +442,27 @@ export default function App() {
         onSetZoom={setZoom}
       />
 
+      {doc && (
+        <AnnotationBar
+          tool={tool}
+          toolStyle={toolStyle}
+          selection={annotSelection}
+          busy={busy}
+          focusComment={focusComment}
+          onToolChange={changeTool}
+          onToolStyleChange={changeToolStyle}
+          onUpdateSelected={(patch) => {
+            updateSelectedAnnot(patch)
+            // Restyling what you just drew also sets the style for the next one.
+            const { color, width, opacity } = patch
+            if (color || width !== undefined || opacity !== undefined) {
+              changeToolStyle(Object.fromEntries(Object.entries({ color, width, opacity }).filter(([, v]) => v !== undefined)))
+            }
+          }}
+          onDeleteSelected={deleteSelectedAnnot}
+        />
+      )}
+
       {error && (
         <div className="banner" role="alert">
           <span>{error}</span>
@@ -350,49 +470,51 @@ export default function App() {
         </div>
       )}
 
-      <main className="workspace">
-        {doc ? (
-          <>
-            {sidebarOpen && (
-              <Sidebar
-                key={`sidebar-${doc.key}`}
+      <AnnotationContext.Provider value={annotationController}>
+        <main className="workspace">
+          {doc ? (
+            <>
+              {sidebarOpen && (
+                <Sidebar
+                  key={`sidebar-${doc.key}`}
+                  pages={pages}
+                  currentPage={currentPage}
+                  selected={selectedIds}
+                  busy={busy}
+                  onSelectionChange={setPickedIds}
+                  onNavigate={goToPage}
+                  onRotate={rotate}
+                  onDelete={deleteSelected}
+                  onExtract={extract}
+                  onInsertBlank={insertBlank}
+                  onInsertFromFile={() => insertInputRef.current?.click()}
+                  onMove={move}
+                  onDropFiles={insertFiles}
+                />
+              )}
+              <Viewer
+                key={`viewer-${doc.key}`}
+                ref={viewerRef}
                 pages={pages}
-                currentPage={currentPage}
-                selected={selectedIds}
-                busy={busy}
-                onSelectionChange={setPickedIds}
-                onNavigate={goToPage}
-                onRotate={rotate}
-                onDelete={deleteSelected}
-                onExtract={extract}
-                onInsertBlank={insertBlank}
-                onInsertFromFile={() => insertInputRef.current?.click()}
-                onMove={move}
-                onDropFiles={insertFiles}
+                scale={scale}
+                onCurrentPageChange={setCurrentPage}
+                onWidthChange={setViewerWidth}
+                onZoom={zoomBy}
               />
-            )}
-            <Viewer
-              key={`viewer-${doc.key}`}
-              ref={viewerRef}
-              pages={pages}
-              scale={scale}
-              onCurrentPageChange={setCurrentPage}
-              onWidthChange={setViewerWidth}
-              onZoom={zoomBy}
-            />
-          </>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-state__card">
-              <h1>Open a PDF to get started</h1>
-              <p>Drop a file anywhere in this window, or choose one from your computer. Files stay on your device.</p>
-              <button className="button button--primary" onClick={() => fileInputRef.current?.click()} disabled={busy}>
-                {busy ? 'Opening…' : 'Choose a PDF'}
-              </button>
+            </>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-state__card">
+                <h1>Open a PDF to get started</h1>
+                <p>Drop a file anywhere in this window, or choose one from your computer. Files stay on your device.</p>
+                <button className="button button--primary" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                  {busy ? 'Opening…' : 'Choose a PDF'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </AnnotationContext.Provider>
 
       {dragging && (
         <div className="drop-overlay">

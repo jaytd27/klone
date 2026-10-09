@@ -2,7 +2,22 @@
 // through the request/response protocol in ./protocol.ts.
 
 import * as mupdf from 'mupdf'
-import type { DocState, OpenResult, PageInfo, RenderResult, WorkerReady, WorkerRequest, WorkerResponse } from './protocol'
+import type {
+  AnnotInfo,
+  AnnotPatch,
+  AnnotSpec,
+  AnnotStyle,
+  DocState,
+  OpenResult,
+  PageInfo,
+  Point,
+  Quad,
+  RenderResult,
+  RGB,
+  WorkerReady,
+  WorkerRequest,
+  WorkerResponse,
+} from './protocol'
 
 /** Thrown for requests that refer to something that no longer exists. */
 class StaleError extends Error {}
@@ -13,6 +28,11 @@ let journalEnabled = false
 let savedPosition = 0
 const pageCache = new Map<number, mupdf.PDFPage>()
 let idToIndex = new Map<number, number>()
+/** Per-page content revisions keyed by page id, plus one for whole-document changes. */
+const pageRevs = new Map<number, number>()
+let docRev = 0
+/** Extracted text per page id, for hit-testing text selections. */
+const textCache = new Map<number, mupdf.StructuredText>()
 
 function requireDoc(): mupdf.PDFDocument {
   if (!doc) throw new Error('No document is open')
@@ -24,8 +44,15 @@ function clearPageCache() {
   pageCache.clear()
 }
 
+function clearTextCache() {
+  for (const text of textCache.values()) text.destroy()
+  textCache.clear()
+}
+
 function closeDocument() {
   clearPageCache()
+  clearTextCache()
+  pageRevs.clear()
   idToIndex.clear()
   doc?.destroy()
   doc = null
@@ -56,7 +83,13 @@ function state(): DocState {
     const rotate = obj.getInheritable('Rotate')
     const id = obj.asIndirect()
     idToIndex.set(id, i)
-    pages.push({ id, width: x1 - x0, height: y1 - y0, rotation: rotate.isNumber() ? rotate.asNumber() : 0 })
+    pages.push({
+      id,
+      width: x1 - x0,
+      height: y1 - y0,
+      rotation: rotate.isNumber() ? rotate.asNumber() : 0,
+      rev: docRev + (pageRevs.get(id) ?? 0),
+    })
   }
   return {
     pages,
@@ -101,8 +134,12 @@ function authenticate(password: string): OpenResult {
   return describe()
 }
 
-/** Runs `fn` as one undoable step and returns the new document state. */
-function mutate(name: string, fn: (d: mupdf.PDFDocument) => void): DocState {
+/**
+ * Runs `fn` as one undoable step and returns the new document state.
+ * `page` names the only page whose content changes, which keeps cached text
+ * for the others; without it the whole document is assumed to change.
+ */
+function mutate(name: string, fn: (d: mupdf.PDFDocument) => void, page?: number): DocState {
   const d = requireDoc()
   // A new step after undoing past the save point discards that save point.
   if (d.getJournal().position < savedPosition) savedPosition = -1
@@ -115,6 +152,12 @@ function mutate(name: string, fn: (d: mupdf.PDFDocument) => void): DocState {
     throw err
   } finally {
     clearPageCache()
+    if (page === undefined) {
+      clearTextCache()
+      docRev++
+    } else {
+      pageRevs.set(page, (pageRevs.get(page) ?? 0) + 1)
+    }
   }
   return state()
 }
@@ -126,7 +169,7 @@ function indexOf(id: number): number {
 }
 
 function render(id: number, scale: number): RenderResult {
-  const page = loadPage(indexOf(id))
+  const page = pageById(id)
   const pixmap = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true)
   try {
     const width = pixmap.getWidth()
@@ -235,12 +278,183 @@ function insertBlank(at: number, width: number, height: number): DocState {
   })
 }
 
+// ---------- Annotations ----------
+
+const ANNOT_TYPES: Record<AnnotSpec['kind'], mupdf.PDFAnnotationType> = {
+  highlight: 'Highlight',
+  underline: 'Underline',
+  strikeout: 'StrikeOut',
+  note: 'Text',
+  rect: 'Square',
+  ellipse: 'Circle',
+  line: 'Line',
+  arrow: 'Line',
+  ink: 'Ink',
+}
+
+/** Not listed for editing: popups belong to their parent, links and form fields are separate features. */
+const HIDDEN_TYPES = new Set<string>(['Popup', 'Link', 'Widget'])
+
+function toRGB(color: mupdf.AnnotColor): RGB | null {
+  switch (color.length) {
+    case 1:
+      return [color[0], color[0], color[0]]
+    case 3:
+      return [color[0], color[1], color[2]]
+    case 4: {
+      const [c, m, y, k] = color
+      return [(1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)]
+    }
+    default:
+      return null
+  }
+}
+
+function pageById(id: number): mupdf.PDFPage {
+  return loadPage(indexOf(id))
+}
+
+function findAnnot(page: mupdf.PDFPage, id: number): mupdf.PDFAnnotation {
+  const annot = page.getAnnotations().find((a) => a.getObject().asIndirect() === id)
+  if (!annot) throw new StaleError(`Annotation ${id} no longer exists`)
+  return annot
+}
+
+function describeAnnot(annot: mupdf.PDFAnnotation): AnnotInfo {
+  const type = annot.getType()
+  return {
+    id: annot.getObject().asIndirect(),
+    type,
+    bounds: annot.getBounds(),
+    color: toRGB(annot.getColor()),
+    opacity: annot.getOpacity(),
+    width: annot.hasBorder() && type !== 'Text' ? annot.getBorderWidth() : null,
+    contents: annot.getContents(),
+  }
+}
+
+function listAnnots(pageId: number): AnnotInfo[] {
+  return pageById(pageId)
+    .getAnnotations()
+    .filter((a) => !HIDDEN_TYPES.has(a.getType()))
+    .map(describeAnnot)
+}
+
+function textQuads(pageId: number, from: Point, to: Point): Quad[] {
+  let text = textCache.get(pageId)
+  if (!text) {
+    text = pageById(pageId).toStructuredText('preserve-whitespace')
+    textCache.set(pageId, text)
+  }
+  return text.highlight(from, to) as Quad[]
+}
+
+function normalizeRect([x0, y0, x1, y1]: mupdf.Rect): mupdf.Rect {
+  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]
+}
+
+function createAnnot(pageId: number, spec: AnnotSpec, style: AnnotStyle): { state: DocState; annot: number } {
+  let created = 0
+  const state = mutate(
+    'Add annotation',
+    () => {
+      const annot = pageById(pageId).createAnnotation(ANNOT_TYPES[spec.kind])
+      annot.setColor(style.color)
+      annot.setOpacity(style.opacity)
+      switch (spec.kind) {
+        case 'highlight':
+        case 'underline':
+        case 'strikeout':
+          annot.setQuadPoints(spec.quads)
+          break
+        case 'note': {
+          const [x, y] = spec.at
+          annot.setRect([x - 10, y - 10, x + 10, y + 10])
+          annot.setIcon('Comment')
+          break
+        }
+        case 'rect':
+        case 'ellipse':
+          annot.setRect(normalizeRect(spec.rect))
+          annot.setBorderWidth(style.width)
+          break
+        case 'line':
+        case 'arrow':
+          annot.setLine(spec.from, spec.to)
+          annot.setBorderWidth(style.width)
+          if (spec.kind === 'arrow') {
+            annot.setLineEndingStyles('None', 'ClosedArrow')
+            annot.setInteriorColor(style.color)
+          }
+          break
+        case 'ink':
+          annot.setInkList(spec.strokes)
+          annot.setBorderWidth(style.width)
+          break
+      }
+      annot.update()
+      created = annot.getObject().asIndirect()
+    },
+    pageId,
+  )
+  return { state, annot: created }
+}
+
+function moveAnnot(annot: mupdf.PDFAnnotation, [dx, dy]: Point) {
+  const shift = ([x, y]: mupdf.Point): mupdf.Point => [x + dx, y + dy]
+  if (annot.hasInkList()) {
+    annot.setInkList(annot.getInkList().map((stroke) => stroke.map(shift)))
+  } else if (annot.hasLine()) {
+    const [a, b] = annot.getLine()
+    annot.setLine(shift(a), shift(b))
+  } else if (annot.hasQuadPoints()) {
+    annot.setQuadPoints(annot.getQuadPoints().map((q) => q.map((v, i) => v + (i % 2 ? dy : dx)) as mupdf.Quad))
+  } else if (annot.hasVertices()) {
+    annot.setVertices(annot.getVertices().map(shift))
+  } else if (annot.hasRect()) {
+    const [x0, y0, x1, y1] = annot.getRect()
+    annot.setRect([x0 + dx, y0 + dy, x1 + dx, y1 + dy])
+  }
+}
+
+function updateAnnot(pageId: number, annotId: number, patch: AnnotPatch): DocState {
+  return mutate(
+    'Edit annotation',
+    () => {
+      const annot = findAnnot(pageById(pageId), annotId)
+      if (patch.color) {
+        annot.setColor(patch.color)
+        if (annot.hasLine() && annot.getLineEndingStyles().end !== 'None') annot.setInteriorColor(patch.color)
+      }
+      if (patch.opacity !== undefined) annot.setOpacity(patch.opacity)
+      if (patch.width !== undefined && annot.hasBorder()) annot.setBorderWidth(patch.width)
+      if (patch.contents !== undefined) annot.setContents(patch.contents)
+      if (patch.offset) moveAnnot(annot, patch.offset)
+      annot.update()
+    },
+    pageId,
+  )
+}
+
+function deleteAnnot(pageId: number, annotId: number): DocState {
+  return mutate(
+    'Delete annotation',
+    () => {
+      const page = pageById(pageId)
+      page.deleteAnnotation(findAnnot(page, annotId))
+    },
+    pageId,
+  )
+}
+
 function history(direction: 'undo' | 'redo'): DocState {
   const d = requireDoc()
   if (direction === 'undo' ? d.canUndo() : d.canRedo()) {
     if (direction === 'undo') d.undo()
     else d.redo()
     clearPageCache()
+    clearTextCache()
+    docRev++
   }
   return state()
 }
@@ -276,6 +490,16 @@ function handle(req: WorkerRequest): { result: unknown; transfer?: Transferable[
     case 'undo':
     case 'redo':
       return { result: history(req.type) }
+    case 'listAnnots':
+      return { result: listAnnots(req.page) }
+    case 'textQuads':
+      return { result: textQuads(req.page, req.from, req.to) }
+    case 'createAnnot':
+      return { result: createAnnot(req.page, req.spec, req.style) }
+    case 'updateAnnot':
+      return { result: updateAnnot(req.page, req.annot, req.patch) }
+    case 'deleteAnnot':
+      return { result: deleteAnnot(req.page, req.annot) }
   }
 }
 

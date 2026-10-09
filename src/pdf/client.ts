@@ -5,7 +5,21 @@
 // requests whose AbortSignal fires before they are sent are dropped, so fast
 // scrolling doesn't leave a backlog of pages nobody is looking at.
 
-import type { DocState, OpenResult, RenderResult, ResultMap, WorkerReady, WorkerRequest, WorkerResponse } from './protocol'
+import type {
+  AnnotInfo,
+  AnnotPatch,
+  AnnotSpec,
+  AnnotStyle,
+  DocState,
+  OpenResult,
+  Point,
+  Quad,
+  RenderResult,
+  ResultMap,
+  WorkerReady,
+  WorkerRequest,
+  WorkerResponse,
+} from './protocol'
 
 interface Pending {
   resolve: (value: unknown) => void
@@ -113,6 +127,27 @@ export class PdfClient {
 
   redo(): Promise<DocState> {
     return this.send({ type: 'redo' })
+  }
+
+  listAnnots(page: number): Promise<AnnotInfo[]> {
+    return this.send({ type: 'listAnnots', page })
+  }
+
+  /** Quads covering the text between two points, as a text selection would. */
+  textQuads(page: number, from: Point, to: Point): Promise<Quad[]> {
+    return this.send({ type: 'textQuads', page, from, to })
+  }
+
+  createAnnot(page: number, spec: AnnotSpec, style: AnnotStyle): Promise<{ state: DocState; annot: number }> {
+    return this.send({ type: 'createAnnot', page, spec, style })
+  }
+
+  updateAnnot(page: number, annot: number, patch: AnnotPatch): Promise<DocState> {
+    return this.send({ type: 'updateAnnot', page, annot, patch })
+  }
+
+  deleteAnnot(page: number, annot: number): Promise<DocState> {
+    return this.send({ type: 'deleteAnnot', page, annot })
   }
 
   /** Renders the page with object number `id` at `scale` device pixels per point. */
