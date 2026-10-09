@@ -11,6 +11,7 @@ const TOOLS: { tool: Tool; icon: IconName; label: string }[] = [
   { tool: 'strikeout', icon: 'strikeout', label: 'Strike out text' },
   { tool: 'note', icon: 'note', label: 'Sticky note' },
   { tool: 'text', icon: 'textBox', label: 'Text box' },
+  { tool: 'editText', icon: 'editText', label: 'Edit existing text' },
   { tool: 'rect', icon: 'rect', label: 'Rectangle' },
   { tool: 'ellipse', icon: 'ellipse', label: 'Ellipse' },
   { tool: 'line', icon: 'line', label: 'Line' },
@@ -94,8 +95,10 @@ export function AnnotationBar(props: Props) {
   const showComment = info && info.type !== 'FreeText'
 
   const redactionSelected = info?.type === 'Redact'
-  const redactHint =
-    !info && REDACT_TOOLS.has(tool)
+  const toolHint =
+    !info && tool === 'editText'
+      ? 'Click a line to edit it, or clear it to delete. New text uses the closest standard font.'
+      : !info && REDACT_TOOLS.has(tool)
       ? tool === 'redactText'
         ? 'Drag across text to mark it. Nothing is removed until you apply redactions.'
         : 'Drag a box over anything, including images, to mark it. Nothing is removed until you apply redactions.'
@@ -159,8 +162,8 @@ export function AnnotationBar(props: Props) {
             <Icon name="trash" />
           </button>
         </div>
-      ) : redactHint ? (
-        <span className="annot-bar__hint">{redactHint}</span>
+      ) : toolHint ? (
+        <span className="annot-bar__hint">{toolHint}</span>
       ) : controls ? (
         <div className="annot-bar__style">
           {info && <span className="annot-bar__label">{TYPE_LABELS[info.type] ?? info.type}</span>}

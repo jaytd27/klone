@@ -31,6 +31,7 @@ const paths = {
   redactText: 'M4 6h16M4 18h9M4 10h16v4H4zM7 12h10',
   redactArea: 'M4 4h16v16H4zM4 12h16M12 4v16',
   search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm5 12 4 4',
+  editText: 'M4 20h4L19 9l-4-4L4 16zM13 7l4 4M14 20h6',
   scan: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9h8M8 12h8M8 15h5',
 } as const
 

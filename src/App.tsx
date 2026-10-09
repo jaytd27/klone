@@ -12,7 +12,7 @@ import { SignatureDialog } from './components/SignatureDialog'
 import { WatermarkDialog, type WatermarkPages } from './components/WatermarkDialog'
 import { loadImage } from './images'
 import { pdf } from './pdf/client'
-import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, FieldChange, OpenResult, Rect, WatermarkSpec } from './pdf/protocol'
+import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, FieldChange, OpenResult, Rect, TextLine, WatermarkSpec } from './pdf/protocol'
 import { MAX_SCALE, MIN_SCALE, ZOOM_PRESETS, clampScale } from './zoom'
 
 interface OpenDocument extends DocState {
@@ -387,6 +387,12 @@ export default function App() {
     [applyState],
   )
 
+  const editTextLine = useCallback(
+    (pageId: number, line: TextLine, text: string) =>
+      void run("Couldn't change the text", async () => applyState(await pdf.replaceTextLine(pageId, line, text))),
+    [run, applyState],
+  )
+
   const changeToolStyle = (patch: Partial<AnnotStyle>) => {
     if (tool !== 'select') setToolStyles((styles) => ({ ...styles, [tool]: { ...styles[tool], ...patch } }))
   }
@@ -402,8 +408,9 @@ export default function App() {
       create: createAnnot,
       updateSelected: updateSelectedAnnot,
       fillField,
+      editTextLine,
     }),
-    [tool, toolStyle, busy, annotSelection, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot, fillField],
+    [tool, toolStyle, busy, annotSelection, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot, fillField, editTextLine],
   )
 
   const setZoom = useCallback((value: number | 'fit') => {

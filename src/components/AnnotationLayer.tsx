@@ -45,6 +45,7 @@ const CURSORS: Record<Tool, string> = {
   ink: 'crosshair',
   redactText: 'text',
   redactArea: 'crosshair',
+  editText: 'default',
 }
 
 function contains([x0, y0, x1, y1]: Rect, [x, y]: Point, slop: number) {

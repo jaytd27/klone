@@ -14,6 +14,7 @@ export type Tool =
   | 'ink'
   | 'redactText'
   | 'redactArea'
+  | 'editText'
 export type DrawingTool = Exclude<Tool, 'select'>
 
 export const MARKUP_TOOLS: ReadonlySet<Tool> = new Set(['highlight', 'underline', 'strikeout'])
@@ -60,4 +61,5 @@ export const DEFAULT_STYLES: Record<DrawingTool, AnnotStyle> = {
   // Redaction marks have no style of their own; these are placeholders.
   redactText: style(REDACT_COLOR),
   redactArea: style(REDACT_COLOR),
+  editText: style('#1c1f24'),
 }

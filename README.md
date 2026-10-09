@@ -14,7 +14,15 @@ An open-source, in-browser PDF editor built on [MuPDF.js](https://mupdf.readthed
 - [x] Add content: text boxes (font, size, color), images (PNG, JPEG, WebP, GIF with transparency), drawn or typed signatures (saved for reuse), and text watermarks; resize handles for shapes and images
 - [x] True redaction: mark text or areas (or find & mark every match), then permanently remove the text, image pixels, graphics, annotations and form values underneath; downloading warns about unapplied marks
 - [x] OCR for scanned documents (Tesseract.js, in the browser): adds an invisible text layer so scans can be searched, selected, highlighted and redacted; 7 languages; skips pages that already have text
-- [ ] In-place editing of existing text
+- [x] In-place editing of existing text: click a line to change or delete it; new text keeps the position, angle, size and colour, in the closest standard font
+
+## Known limitations
+
+- Text you add or edit (text boxes, edited lines, watermarks, OCR) uses the standard PDF fonts, so only Latin characters are supported, and edited lines use the closest standard font rather than the document's own.
+- Edited text doesn't reflow: each line is replaced on its own.
+- OCR needs pages to be upright; rotate sideways scans first. Its engine and language data are downloaded from a CDN on first use.
+- Form JavaScript (calculations, validation) and XFA forms aren't supported.
+- No cryptographic digital signatures, PDF-to-Office conversion, or special handling for badly broken files.
 
 ## Development
 

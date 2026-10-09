@@ -357,6 +357,60 @@ textarea.form-field--text {
   field-sizing: content;
 }
 
+/* ---------- Editing existing text ---------- */
+
+.text-edit-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.text-line {
+  position: absolute;
+  padding: 0;
+  border: 1px dashed rgba(47, 111, 222, 0.6);
+  /* A faint halo keeps the outline visible on dark backgrounds too. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+  border-radius: 2px;
+  background: transparent;
+  cursor: text;
+}
+
+.text-line:hover:not(:disabled),
+.text-line:focus-visible {
+  border-style: solid;
+  border-color: var(--accent);
+  background: rgba(47, 111, 222, 0.08);
+  outline: none;
+}
+
+.line-editor {
+  position: absolute;
+  z-index: 2;
+  transform-origin: 0 0;
+}
+
+.line-editor input {
+  display: block;
+  margin: 0;
+  padding: 0 2px;
+  border: none;
+  outline: 2px solid var(--accent);
+  background: #fff;
+  line-height: 1.25;
+}
+
+.line-editor__warning {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* ---------- Dialogs ---------- */
 
 .modal {

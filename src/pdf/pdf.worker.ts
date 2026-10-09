@@ -21,6 +21,7 @@ import type {
   RGB,
   SearchHit,
   TextFont,
+  TextLine,
   WatermarkSpec,
   WorkerReady,
   WorkerRequest,
@@ -326,16 +327,20 @@ function toTextFont(name: string): TextFont {
   return name in TEXT_FONTS ? (name as TextFont) : 'Helv'
 }
 
-/** Width of `text` in points, using the font's glyph metrics. */
-function textWidth(font: TextFont, size: number, text: string): number {
-  let metrics = metricFonts.get(font)
+/** Width of `text` in points in one of the 14 standard PDF fonts, from its glyph metrics. */
+function standardTextWidth(fontName: string, size: number, text: string): number {
+  let metrics = metricFonts.get(fontName)
   if (!metrics) {
-    metrics = new mupdf.Font(TEXT_FONTS[font])
-    metricFonts.set(font, metrics)
+    metrics = new mupdf.Font(fontName)
+    metricFonts.set(fontName, metrics)
   }
   let width = 0
   for (const ch of text) width += metrics.advanceGlyph(metrics.encodeCharacter(ch))
   return width * size
+}
+
+function textWidth(font: TextFont, size: number, text: string): number {
+  return standardTextWidth(TEXT_FONTS[font], size, text)
 }
 
 /** Sizes a text box to fit its text, keeping its top-left corner at `origin`. */
@@ -713,8 +718,14 @@ function addResource(d: mupdf.PDFDocument, page: mupdf.PDFObject, category: stri
  */
 function appendContent(d: mupdf.PDFDocument, page: mupdf.PDFObject, content: string) {
   const existing = page.get('Contents')
+  // Our opening q stream carries this key, so a page already wrapped by an
+  // earlier edit isn't wrapped again (deep q nesting breaks some readers).
+  if (existing.isArray() && existing.length && existing.get(0).get('KloneWrap').isBoolean()) {
+    existing.push(d.addStream(content, {}))
+    return
+  }
   const contents = d.newArray()
-  contents.push(d.addStream('q', {}))
+  contents.push(d.addStream('q', { KloneWrap: true }))
   if (existing.isArray()) existing.forEach((stream) => contents.push(stream))
   else if (!existing.isNull()) contents.push(existing)
   contents.push(d.addStream('Q', {}))
@@ -818,6 +829,110 @@ function addOcrText(pages: OcrPage[]): DocState {
       }
       appendContent(d, obj, content + ' ET')
     }
+  })
+}
+
+// ---------- Editing existing text ----------
+
+const STANDARD_FONTS: Record<TextLine['font']['family'], [string, string, string, string]> = {
+  // regular, bold, italic, bold italic
+  sans: ['Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique'],
+  serif: ['Times-Roman', 'Times-Bold', 'Times-Italic', 'Times-BoldItalic'],
+  mono: ['Courier', 'Courier-Bold', 'Courier-Oblique', 'Courier-BoldOblique'],
+}
+
+function standardFontFor({ family, bold, italic }: TextLine['font']): string {
+  return STANDARD_FONTS[family][(bold ? 1 : 0) + (italic ? 2 : 0)]
+}
+
+/** The lines of text on a page, with what's needed to edit each in place. */
+function textLines(pageId: number): TextLine[] {
+  const lines: TextLine[] = []
+  let current: { bbox: mupdf.Rect; dir: Point; text: string; first?: Quad; last?: Quad; origin?: Point; size: number; color: RGB; font?: TextLine['font'] } | null = null
+  pageText(pageId).walk({
+    beginLine(bbox, _wmode, dir) {
+      current = { bbox, dir, text: '', size: 0, color: [0, 0, 0] }
+    },
+    onChar(c, origin, font, size, quad, color) {
+      if (!current) return
+      current.text += c
+      if (!current.first) {
+        current.first = quad
+        current.origin = origin
+        current.size = size
+        current.color = toRGB(color as mupdf.AnnotColor) ?? [0, 0, 0]
+        const name = font.getName()
+        current.font = {
+          name,
+          family: font.isMono() ? 'mono' : font.isSerif() ? 'serif' : 'sans',
+          bold: font.isBold() || /bold|black|heavy/i.test(name),
+          italic: font.isItalic() || /italic|oblique/i.test(name),
+        }
+      }
+      if (c.trim()) current.last = quad
+    },
+    endLine() {
+      const line = current
+      current = null
+      if (!line?.first || !line.last || !line.font || !line.origin || !line.text.trim()) return
+      const [f, l] = [line.first, line.last]
+      lines.push({
+        text: line.text.trimEnd(),
+        bbox: line.bbox,
+        // Upper-left/lower-left of the first glyph, upper-right/lower-right of the last.
+        quad: [f[0], f[1], l[2], l[3], f[4], f[5], l[6], l[7]],
+        origin: line.origin,
+        dir: line.dir,
+        size: line.size,
+        color: line.color,
+        font: line.font,
+      })
+    },
+  })
+  return lines
+}
+
+/**
+ * Replaces a line of page text: removes its glyphs with a one-off redaction
+ * (leaving any redaction marks the user has pending alone), then writes
+ * `text` at the same baseline, angle, size and colour in the closest
+ * standard font. Empty `text` just deletes the line.
+ */
+function replaceTextLine(pageId: number, line: TextLine, text: string): DocState {
+  return mutate('Edit text', (d) => {
+    const page = pageById(pageId)
+    const obj = page.getObject()
+
+    // Narrow the area to the middle band of the glyphs so neighbouring lines,
+    // whose boxes often overlap this one slightly, are untouched.
+    const q = line.quad
+    const lerp = (ax: number, ay: number, bx: number, by: number, t: number) => [ax + (bx - ax) * t, ay + (by - ay) * t]
+    const band = [
+      ...lerp(q[4], q[5], q[0], q[1], 0.75),
+      ...lerp(q[6], q[7], q[2], q[3], 0.75),
+      ...lerp(q[4], q[5], q[0], q[1], 0.2),
+      ...lerp(q[6], q[7], q[2], q[3], 0.2),
+    ] as mupdf.Quad
+    const eraser = page.createAnnotation('Redact')
+    eraser.setQuadPoints([band])
+    eraser.applyRedaction(0, mupdf.PDFPage.REDACT_IMAGE_NONE, mupdf.PDFPage.REDACT_LINE_ART_NONE, mupdf.PDFPage.REDACT_TEXT_REMOVE)
+
+    if (!text.trim()) return
+    const fontKey = addResource(d, obj, 'Font', 'KloneEdit', d.addSimpleFont(new mupdf.Font(standardFontFor(line.font))))
+    const [a, b, c, dd, e, f] = mupdf.Matrix.invert(page.getTransform())
+    const [ox, oy] = [a * line.origin[0] + c * line.origin[1] + e, b * line.origin[0] + dd * line.origin[1] + f]
+    // Along the baseline, and "up" (display y runs down), mapped into PDF space.
+    const along = [a * line.dir[0] + c * line.dir[1], b * line.dir[0] + dd * line.dir[1]]
+    const up = [a * line.dir[1] - c * line.dir[0], b * line.dir[1] - dd * line.dir[0]]
+    const [rx, ry] = along.map((v) => v / Math.hypot(along[0], along[1]))
+    const [ux, uy] = up.map((v) => v / Math.hypot(up[0], up[1]))
+    const [r, g, bl] = line.color
+    appendContent(
+      d,
+      obj,
+      `BT /${fontKey} ${num(line.size)} Tf ${num(r)} ${num(g)} ${num(bl)} rg ` +
+        `${num(rx)} ${num(ry)} ${num(ux)} ${num(uy)} ${num(ox)} ${num(oy)} Tm ${pdfString(text)} Tj ET`,
+    )
   })
 }
 
@@ -960,6 +1075,10 @@ function handle(req: WorkerRequest): { result: unknown; transfer?: Transferable[
       return { result: textStats() }
     case 'addOcrText':
       return { result: addOcrText(req.pages) }
+    case 'textLines':
+      return { result: textLines(req.page) }
+    case 'replaceTextLine':
+      return { result: replaceTextLine(req.page, req.line, req.text) }
   }
 }
 

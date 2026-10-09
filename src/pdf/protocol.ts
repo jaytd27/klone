@@ -116,6 +116,21 @@ export interface OcrPage {
   words: OcrWord[]
 }
 
+/** A line of existing page text, as offered for editing. */
+export interface TextLine {
+  text: string
+  bbox: Rect
+  /** Covers the line's glyphs; follows the line's direction. */
+  quad: Quad
+  /** Baseline origin of the first character. */
+  origin: Point
+  /** Unit vector along the baseline, in page space. */
+  dir: Point
+  size: number
+  color: RGB
+  font: { name: string; family: 'sans' | 'serif' | 'mono'; bold: boolean; italic: boolean }
+}
+
 /** One occurrence of a search term. */
 export interface SearchHit {
   /** Page id. */
@@ -175,6 +190,8 @@ export type WorkerRequest =
   | { type: 'applyRedactions' }
   | { type: 'textStats' }
   | { type: 'addOcrText'; pages: OcrPage[] }
+  | { type: 'textLines'; page: number }
+  | { type: 'replaceTextLine'; page: number; line: TextLine; text: string }
 
 export type OpenResult = { needsPassword: true } | ({ needsPassword: false; title: string | null } & DocState)
 
@@ -211,6 +228,8 @@ export interface ResultMap {
   /** Number of text characters on each page, by page id. */
   textStats: { page: number; chars: number }[]
   addOcrText: DocState
+  textLines: TextLine[]
+  replaceTextLine: DocState
 }
 
 /** Sent once by the worker when MuPDF has loaded and it can take requests. */

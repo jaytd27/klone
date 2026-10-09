@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, FieldChange } from '../pdf/protocol'
+import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, FieldChange, TextLine } from '../pdf/protocol'
 import type { Tool } from './tools'
 
 export interface AnnotSelection {
@@ -22,6 +22,8 @@ export interface AnnotationController {
   /** Moves, resizes or edits the selected annotation. */
   updateSelected(patch: AnnotPatch): void
   fillField(pageId: number, widgetId: number, change: FieldChange): void
+  /** Replaces a line of existing page text; empty text deletes it. */
+  editTextLine(pageId: number, line: TextLine, text: string): void
 }
 
 export const AnnotationContext = createContext<AnnotationController | null>(null)

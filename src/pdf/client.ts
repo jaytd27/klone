@@ -20,6 +20,7 @@ import type {
   OcrPage,
   ResultMap,
   SearchHit,
+  TextLine,
   WatermarkSpec,
   WorkerReady,
   WorkerRequest,
@@ -191,6 +192,16 @@ export class PdfClient {
   /** Adds recognized words to pages as an invisible, searchable text layer. */
   addOcrText(pages: OcrPage[]): Promise<DocState> {
     return this.send({ type: 'addOcrText', pages })
+  }
+
+  /** The lines of text on a page, for in-place editing. */
+  textLines(page: number): Promise<TextLine[]> {
+    return this.send({ type: 'textLines', page })
+  }
+
+  /** Replaces a line of page text (removing its glyphs) with `text`; empty text deletes the line. */
+  replaceTextLine(page: number, line: TextLine, text: string): Promise<DocState> {
+    return this.send({ type: 'replaceTextLine', page, line, text })
   }
 
   /** Renders the page with object number `id` at `scale` device pixels per point. */

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react'
+import { useAnnotations } from '../annotations/context'
 import type { PageInfo } from '../pdf/protocol'
 import { AnnotationLayer } from './AnnotationLayer'
 import { FormLayer } from './FormLayer'
+import { TextEditLayer } from './TextEditLayer'
 import { PageCanvas } from './PageCanvas'
 
 // Must match the padding and gap of .viewer__pages in App.css.
@@ -45,6 +47,7 @@ function pageAt(tops: number[], y: number): number {
 }
 
 export function Viewer({ ref, pages, scale, onCurrentPageChange, onWidthChange, onZoom }: Props) {
+  const { tool } = useAnnotations()
   // State so observers re-attach when the element mounts; the ref is for
   // imperatively adjusting scroll position.
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
@@ -117,6 +120,7 @@ export function Viewer({ ref, pages, scale, onCurrentPageChange, onWidthChange, 
           <PageCanvas key={page.id} page={page} scale={scale} root={container}>
             <AnnotationLayer page={page} scale={scale} />
             <FormLayer page={page} scale={scale} />
+            {tool === 'editText' && <TextEditLayer page={page} scale={scale} />}
           </PageCanvas>
         ))}
       </div>
