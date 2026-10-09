@@ -1,12 +1,13 @@
-# Klone
+# Kwoon
 
-An open-source, in-browser PDF editor built on [MuPDF.js](https://mupdf.readthedocs.io/).
+An open-source PDF editor that runs entirely in your browser, built on [MuPDF.js](https://mupdf.readthedocs.io/). Your files never leave your device.
 
-> Status: early development.
+Live: https://kwoon.pages.dev (deployed from `main`). The repository is named `klone`, Kwoon's working name.
 
 ## Features
 
-- [x] View and render PDFs (thumbnails, zoom, fit width)
+- [x] View and render PDFs (thumbnails, zoom, fit width), search the text, and a Ctrl+K command bar
+- [x] Modes (View, Annotate, Edit, Organize, Sign, Protect), an inspector with properties, comments and page actions, and a status bar
 - [x] Page operations: reorder (drag and drop), rotate, delete, insert blank pages, insert/merge other PDFs, extract pages to a new PDF
 - [x] Undo / redo
 - [x] Annotations: highlight, underline, strikeout, sticky notes with comments, rectangles, ellipses, lines, arrows, freehand ink — with color, width and opacity, move and delete
@@ -24,6 +25,10 @@ An open-source, in-browser PDF editor built on [MuPDF.js](https://mupdf.readthed
 - Form JavaScript (calculations, validation) and XFA forms aren't supported.
 - No cryptographic digital signatures, PDF-to-Office conversion, or special handling for badly broken files.
 
+## Design
+
+The interface uses the **Graphite** theme: dark by default with light and system modes, a single violet accent for state, Space Grotesk / IBM Plex Sans / IBM Plex Mono (self-hosted via Fontsource), and the paper-cat mark. Tokens and component styles live in `src/theme/`; see the design guidelines that came with the theme package for the reasoning.
+
 ## Development
 
 ```sh
@@ -33,4 +38,4 @@ npm run dev
 
 ## License
 
-Klone is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE), as required by its use of MuPDF.
+Kwoon is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE), as required by its use of MuPDF.

@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import type { PageInfo } from '../pdf/protocol'
-import { Icon } from './Icon'
 import { PageCanvas } from './PageCanvas'
 
-const THUMBNAIL_WIDTH = 120
-const PAGE_DRAG_TYPE = 'application/x-klone-pages'
+const THUMBNAIL_WIDTH = 124
+const PAGE_DRAG_TYPE = 'application/x-kwoon-pages'
 
 interface Props {
   pages: PageInfo[]
@@ -14,11 +13,7 @@ interface Props {
   busy: boolean
   onSelectionChange(ids: Set<number>): void
   onNavigate(index: number): void
-  onRotate(degrees: number): void
   onDelete(): void
-  onExtract(): void
-  onInsertBlank(): void
-  onInsertFromFile(): void
   /** Move the selected pages before the page at index `to`. */
   onMove(to: number): void
   onDropFiles(files: File[], at: number): void
@@ -28,24 +23,30 @@ function isPdf(file: File) {
   return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
 }
 
+/** Page thumbnails: click to go, Ctrl/Shift-click to select, drag to reorder, drop PDFs to insert. */
 export function Sidebar(props: Props) {
   const { pages, currentPage, selected, busy } = props
+  // State so thumbnails can observe the list; the ref is for scrolling it.
   const [container, setContainer] = useState<HTMLElement | null>(null)
+  const listRef = useRef<HTMLElement | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
-  const [insertMenuOpen, setInsertMenuOpen] = useState(false)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const anchor = useRef<number | null>(null)
 
+  // Keep the current page's thumbnail in view. Only this list scrolls:
+  // scrollIntoView would also scroll the app shell on narrow layouts.
   useEffect(() => {
-    itemRefs.current[currentPage]?.scrollIntoView({ block: 'nearest' })
-  }, [currentPage])
-
-  useEffect(() => {
-    if (!insertMenuOpen) return
-    const close = () => setInsertMenuOpen(false)
-    window.addEventListener('pointerdown', close)
-    return () => window.removeEventListener('pointerdown', close)
-  }, [insertMenuOpen])
+    const item = itemRefs.current[currentPage]
+    const list = listRef.current
+    if (!item || !list) return
+    const i = item.getBoundingClientRect()
+    const c = list.getBoundingClientRect()
+    const margin = 8
+    if (i.top < c.top) list.scrollTop -= c.top - i.top + margin
+    else if (i.bottom > c.bottom) list.scrollTop += i.bottom - c.bottom + margin
+    if (i.left < c.left) list.scrollLeft -= c.left - i.left + margin
+    else if (i.right > c.right) list.scrollLeft += i.right - c.right + margin
+  }, [currentPage, container])
 
   const selectRange = (from: number, to: number, base: Set<number>) => {
     const [lo, hi] = from < to ? [from, to] : [to, from]
@@ -126,86 +127,50 @@ export function Sidebar(props: Props) {
     }
   }
 
-  const count = selected.size
-  const label = count > 1 ? `${count} pages` : `Page ${currentPage + 1}`
-
   return (
-    <aside className="sidebar">
-      <div className="sidebar__actions" role="toolbar" aria-label={`Page actions (${label})`}>
-        <span className="sidebar__selection">{label}</span>
-        <button className="icon-button icon-button--sm" onClick={() => props.onRotate(-90)} disabled={busy} title="Rotate left">
-          <Icon name="rotateCcw" />
-        </button>
-        <button className="icon-button icon-button--sm" onClick={() => props.onRotate(90)} disabled={busy} title="Rotate right">
-          <Icon name="rotateCw" />
-        </button>
-        <button className="icon-button icon-button--sm" onClick={props.onDelete} disabled={busy || count >= pages.length} title="Delete (Del)">
-          <Icon name="trash" />
-        </button>
-        <button className="icon-button icon-button--sm" onClick={props.onExtract} disabled={busy} title="Extract to a new PDF">
-          <Icon name="extract" />
-        </button>
-        <div className="menu-anchor" onPointerDown={(e) => e.stopPropagation()}>
+    <nav
+      ref={(el) => {
+        listRef.current = el
+        setContainer(el)
+      }}
+      className="kw-sidebar kw-sidebar--thumbs thumbs"
+      aria-label="Pages"
+      onKeyDown={onKeyDown}
+      onDragOver={onDragOver}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropIndex(null)
+      }}
+      onDrop={onDrop}
+    >
+      {pages.map((page, index) => {
+        const classes = ['kw-thumb', 'thumb']
+        if (index === currentPage) classes.push('is-current')
+        if (selected.has(page.id)) classes.push('is-selected')
+        if (dropIndex === index) classes.push('thumb--drop-before')
+        if (dropIndex === pages.length && index === pages.length - 1) classes.push('thumb--drop-after')
+        return (
           <button
-            className="icon-button icon-button--sm"
-            onClick={() => setInsertMenuOpen((open) => !open)}
-            disabled={busy}
-            aria-haspopup="menu"
-            aria-expanded={insertMenuOpen}
-            title="Insert pages"
+            key={page.id}
+            ref={(el) => {
+              itemRefs.current[index] = el
+            }}
+            className={classes.join(' ')}
+            draggable={!busy}
+            onDragStart={(e) => onDragStart(e, index)}
+            onDragEnd={() => setDropIndex(null)}
+            onClick={(e) => onThumbnailClick(e, index)}
+            aria-label={`Page ${index + 1}${page.edited ? ', edited' : ''}`}
+            aria-current={index === currentPage ? 'page' : undefined}
+            aria-pressed={selected.has(page.id)}
           >
-            <Icon name="filePlus" />
-          </button>
-          {insertMenuOpen && (
-            <div className="menu" role="menu">
-              <button role="menuitem" onClick={() => { setInsertMenuOpen(false); props.onInsertBlank() }}>
-                Blank page
-              </button>
-              <button role="menuitem" onClick={() => { setInsertMenuOpen(false); props.onInsertFromFile() }}>
-                Pages from PDF…
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <nav
-        ref={setContainer}
-        className="sidebar__pages"
-        aria-label="Pages"
-        onKeyDown={onKeyDown}
-        onDragOver={onDragOver}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropIndex(null)
-        }}
-        onDrop={onDrop}
-      >
-        {pages.map((page, index) => {
-          const classes = ['thumbnail']
-          if (selected.has(page.id)) classes.push('thumbnail--selected')
-          if (dropIndex === index) classes.push('thumbnail--drop-before')
-          if (dropIndex === pages.length && index === pages.length - 1) classes.push('thumbnail--drop-after')
-          return (
-            <button
-              key={page.id}
-              ref={(el) => {
-                itemRefs.current[index] = el
-              }}
-              className={classes.join(' ')}
-              draggable={!busy}
-              onDragStart={(e) => onDragStart(e, index)}
-              onDragEnd={() => setDropIndex(null)}
-              onClick={(e) => onThumbnailClick(e, index)}
-              aria-label={`Page ${index + 1}`}
-              aria-current={index === currentPage ? 'page' : undefined}
-              aria-pressed={selected.has(page.id)}
-            >
+            <span className="kw-thumb__page thumb__page">
               <PageCanvas page={page} scale={THUMBNAIL_WIDTH / page.width} root={container} />
-              <span className="thumbnail__label">{index + 1}</span>
-            </button>
-          )
-        })}
-      </nav>
-    </aside>
+              {page.edited && <span className="thumb__dot" aria-hidden="true" />}
+            </span>
+            <span className="kw-thumb__num">{index + 1}</span>
+          </button>
+        )
+      })}
+    </nav>
   )
 }

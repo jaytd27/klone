@@ -7,11 +7,12 @@ import { TextEditLayer } from './TextEditLayer'
 import { PageCanvas } from './PageCanvas'
 
 // Must match the padding and gap of .viewer__pages in App.css.
-export const VIEWER_PADDING = 24
+export const VIEWER_PADDING = 28
 export const PAGE_GAP = 16
 
 export interface ViewerHandle {
-  scrollToPage(index: number): void
+  /** Scrolls to a page; with `y` (in points), brings that spot of it into view. */
+  scrollToPage(index: number, y?: number): void
 }
 
 interface Props {
@@ -57,10 +58,12 @@ export function Viewer({ ref, pages, scale, onCurrentPageChange, onWidthChange, 
   const currentPage = useRef(0)
 
   useImperativeHandle(ref, () => ({
-    scrollToPage(index) {
-      if (scrollRef.current) scrollRef.current.scrollTop = tops[index] - VIEWER_PADDING / 2
+    scrollToPage(index, y) {
+      const el = scrollRef.current
+      if (!el) return
+      el.scrollTop = y === undefined ? tops[index] - VIEWER_PADDING / 2 : tops[index] + y * scale - el.clientHeight / 3
     },
-  }), [tops])
+  }), [tops, scale])
 
   // Keep the same spot of the same page under the viewport when zoom changes.
   useLayoutEffect(() => {

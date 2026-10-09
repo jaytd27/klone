@@ -100,6 +100,8 @@ export function AnnotationLayer({ page, scale }: Props) {
   }, [page.id, page.rev])
 
   const { tool, style, selection } = ctx
+  const activeHit = ctx.searchHits[ctx.activeHit]
+  const pageHits = ctx.searchHits.filter((h) => h.page === page.id)
   const color = tool === 'redactText' || tool === 'redactArea' ? REDACT_COLOR : rgbToHex(style.color)
 
   const toPage = (event: { clientX: number; clientY: number }): Point => {
@@ -289,6 +291,11 @@ export function AnnotationLayer({ page, scale }: Props) {
         onPointerLeave={() => setHovering(false)}
         onDoubleClick={onDoubleClick}
       >
+        {pageHits.map((hit, i) =>
+          hit.quads.map((q, j) => (
+            <polygon key={`${i}:${j}`} className={`search-hit ${hit === activeHit ? 'search-hit--active' : ''}`} points={quadPoints(q)} />
+          )),
+        )}
         {outline && !editor && (
           <rect
             className="annot-selection"
@@ -312,7 +319,7 @@ export function AnnotationLayer({ page, scale }: Props) {
             />
           ))}
         {draft?.kind === 'markup' &&
-          draft.quads.map((q, i) => <polygon key={i} points={quadPoints(q)} fill={color} opacity={0.35} />)}
+          draft.quads.map((q, i) => <polygon key={i} points={quadPoints(q)} fill={color} opacity={tool === "highlight" ? 0.7 : 0.35} style={{ mixBlendMode: "multiply" }} />)}
         {draft?.kind === 'ink' && (
           <polyline
             points={draft.points.map((pt) => pt.join(',')).join(' ')}

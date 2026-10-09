@@ -1,0 +1,78 @@
+/* Kwoon — Graphite · base
+   Resets and element defaults. Load after tokens.css. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-family: var(--kw-font-body);
+  font-size: var(--kw-text-sm);
+  line-height: var(--kw-leading-normal);
+  color: var(--kw-text-primary);
+  background: var(--kw-bg-app);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body { margin: 0; min-height: 100vh; }
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-family: var(--kw-font-display);
+  font-weight: var(--kw-weight-bold);
+  letter-spacing: var(--kw-tracking-display);
+  line-height: var(--kw-leading-snug);
+}
+h1 { font-size: var(--kw-text-3xl); line-height: var(--kw-leading-tight); }
+h2 { font-size: var(--kw-text-2xl); }
+h3 { font-size: var(--kw-text-xl); }
+h4 { font-size: var(--kw-text-lg); }
+
+p { margin: 0; }
+
+a { color: var(--kw-text-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, kbd, samp, pre, .kw-mono { font-family: var(--kw-font-mono); font-size: 0.92em; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+/* One focus ring for everything, visible only on keyboard focus.
+   Kwoon fix: --kw-border-focus is the ring *colour* (the 2px width token of
+   the same name is overridden by it), so the width is written out here. */
+:focus-visible {
+  outline: 2px solid var(--kw-border-focus);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--kw-accent-selection); }
+
+hr { border: 0; border-top: var(--kw-border-hairline) solid var(--kw-border-default); margin: 0; }
+
+/* Text helpers */
+.kw-eyebrow {
+  font-family: var(--kw-font-mono);
+  font-size: var(--kw-text-xs);
+  letter-spacing: var(--kw-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--kw-text-secondary);
+}
+.kw-label {
+  font-size: var(--kw-text-2xs);
+  font-weight: var(--kw-weight-semibold);
+  letter-spacing: var(--kw-tracking-label);
+  text-transform: uppercase;
+  color: var(--kw-text-secondary);
+}
+.kw-muted { color: var(--kw-text-secondary); }
+.kw-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Scrollbars that match the chrome */
+* { scrollbar-width: thin; scrollbar-color: var(--kw-border-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--kw-border-strong); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-track { background: transparent; }

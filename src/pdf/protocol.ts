@@ -17,6 +17,8 @@ export interface PageInfo {
   rotation: number
   /** Changes whenever the page's rendered content changes. */
   rev: number
+  /** The page itself was edited (annotations, text, fields) since opening or the last save. */
+  edited: boolean
 }
 
 /** The standard PDF fonts text boxes can use: sans, serif and monospace. */
@@ -99,6 +101,8 @@ export interface DocState {
   dirty: boolean
   /** Redaction marks not yet applied, across the document. */
   redactions: number
+  /** Undoable steps taken so far. */
+  edits: number
 }
 
 /** A word found by OCR, in page space (points, as displayed). */
@@ -191,6 +195,8 @@ export type WorkerRequest =
   | { type: 'textStats' }
   | { type: 'addOcrText'; pages: OcrPage[] }
   | { type: 'textLines'; page: number }
+  | { type: 'allAnnots' }
+  | { type: 'pageTextChars'; page: number }
   | { type: 'replaceTextLine'; page: number; line: TextLine; text: string }
 
 export type OpenResult = { needsPassword: true } | ({ needsPassword: false; title: string | null } & DocState)
@@ -229,6 +235,8 @@ export interface ResultMap {
   textStats: { page: number; chars: number }[]
   addOcrText: DocState
   textLines: TextLine[]
+  allAnnots: { page: number; annot: AnnotInfo }[]
+  pageTextChars: number
   replaceTextLine: DocState
 }
 

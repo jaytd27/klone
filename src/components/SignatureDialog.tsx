@@ -5,8 +5,8 @@ import { Modal } from './Modal'
 const STORAGE_KEY = 'klone.signatures'
 const MAX_SAVED = 6
 const INKS = [
-  { label: 'Black', value: '#111111' },
-  { label: 'Blue', value: '#1c3faa' },
+  { label: 'Black', value: '#1A1A1A' },
+  { label: 'Blue', value: '#1D4ED8' },
 ]
 const SCRIPT_FONTS = [
   { label: 'Script', css: "'Segoe Script', 'Brush Script MT', cursive" },
@@ -147,7 +147,7 @@ export function SignatureDialog({ onUse, onClose }: Props) {
       onClose={onClose}
       footer={
         tab === 'saved' ? (
-          <button className="button" onClick={onClose}>
+          <button className="kw-btn kw-btn--secondary" onClick={onClose}>
             Cancel
           </button>
         ) : (
@@ -156,10 +156,10 @@ export function SignatureDialog({ onUse, onClose }: Props) {
               <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Save for next time
             </label>
             <span className="modal__spacer" />
-            <button className="button" onClick={onClose}>
+            <button className="kw-btn kw-btn--secondary" onClick={onClose}>
               Cancel
             </button>
-            <button className="button button--primary" onClick={placeNew} disabled={!canUse}>
+            <button className="kw-btn kw-btn--primary" onClick={placeNew} disabled={!canUse}>
               Place signature
             </button>
           </>
@@ -200,7 +200,7 @@ export function SignatureDialog({ onUse, onClose }: Props) {
           {INKS.map((option) => (
             <button
               key={option.value}
-              className="swatch"
+              className="kw-swatch"
               role="radio"
               aria-checked={ink === option.value}
               aria-label={option.label}
@@ -226,7 +226,7 @@ export function SignatureDialog({ onUse, onClose }: Props) {
           />
           <div className="signature-pad__footer">
             <span>Sign above</span>
-            <button className="button" onClick={clearPad} disabled={!hasDrawing}>
+            <button className="kw-btn kw-btn--secondary" onClick={clearPad} disabled={!hasDrawing}>
               Clear
             </button>
           </div>
@@ -235,7 +235,7 @@ export function SignatureDialog({ onUse, onClose }: Props) {
 
       {tab === 'type' && (
         <div className="signature-type">
-          <input className="text-input" placeholder="Type your name" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
+          <input className="kw-input" placeholder="Type your name" value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
           <div className="signature-fonts">
             {SCRIPT_FONTS.map((f) => (
               <button

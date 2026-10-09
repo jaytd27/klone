@@ -42,15 +42,15 @@ export function FindRedactDialog({ onMark, onClose }: FindProps) {
       footer={
         <>
           <span className="modal__spacer" />
-          <button className="button" onClick={onClose}>
+          <button className="kw-btn kw-btn--secondary" onClick={onClose}>
             Cancel
           </button>
           {current && current.hits > 0 ? (
-            <button className="button button--primary" onClick={() => onMark(current.query, current.matchCase)}>
+            <button className="kw-btn kw-btn--primary" onClick={() => onMark(current.query, current.matchCase)}>
               Mark {plural(current.hits, 'match', 'matches')}
             </button>
           ) : (
-            <button className="button button--primary" onClick={() => find()} disabled={!query.trim() || searching}>
+            <button className="kw-btn kw-btn--primary" onClick={() => find()} disabled={!query.trim() || searching}>
               {searching ? 'Searching…' : 'Find'}
             </button>
           )}
@@ -59,7 +59,7 @@ export function FindRedactDialog({ onMark, onClose }: FindProps) {
     >
       <form className="find-form" onSubmit={find}>
         <input
-          className="text-input"
+          className="kw-input"
           placeholder="Word or phrase, e.g. a name or account number"
           aria-label="Text to find"
           value={query}
@@ -97,10 +97,10 @@ export function ApplyRedactionsDialog({ count, onApply, onClose }: ApplyProps) {
       footer={
         <>
           <span className="modal__spacer" />
-          <button className="button" onClick={onClose}>
+          <button className="kw-btn kw-btn--secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="button button--danger" onClick={onApply} autoFocus>
+          <button className="kw-btn kw-btn--danger" onClick={onApply} autoFocus>
             Apply {plural(count, 'redaction')}
           </button>
         </>
@@ -133,14 +133,14 @@ export function UnappliedRedactionsDialog({ count, onApplyAndDownload, onDownloa
       onClose={onClose}
       footer={
         <>
-          <button className="button" onClick={onDownloadAnyway}>
+          <button className="kw-btn kw-btn--secondary" onClick={onDownloadAnyway}>
             Download with marks only
           </button>
           <span className="modal__spacer" />
-          <button className="button" onClick={onClose}>
+          <button className="kw-btn kw-btn--secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="button button--primary" onClick={onApplyAndDownload} autoFocus>
+          <button className="kw-btn kw-btn--primary" onClick={onApplyAndDownload} autoFocus>
             Apply and download
           </button>
         </>

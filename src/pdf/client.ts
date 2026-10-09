@@ -194,6 +194,16 @@ export class PdfClient {
     return this.send({ type: 'addOcrText', pages })
   }
 
+  /** Every annotation in the document with its page id (for the comments list). */
+  allAnnots(): Promise<{ page: number; annot: AnnotInfo }[]> {
+    return this.send({ type: 'allAnnots' })
+  }
+
+  /** Number of text characters on a page (0 for an image-only scan). */
+  pageTextChars(page: number): Promise<number> {
+    return this.send({ type: 'pageTextChars', page })
+  }
+
   /** The lines of text on a page, for in-place editing. */
   textLines(page: number): Promise<TextLine[]> {
     return this.send({ type: 'textLines', page })

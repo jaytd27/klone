@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, FieldChange, TextLine } from '../pdf/protocol'
+import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, FieldChange, SearchHit, TextLine } from '../pdf/protocol'
 import type { Tool } from './tools'
 
 export interface AnnotSelection {
@@ -15,6 +15,9 @@ export interface AnnotationController {
   style: AnnotStyle
   busy: boolean
   selection: AnnotSelection | null
+  /** Matches of the current text search, and which one is current. */
+  searchHits: SearchHit[]
+  activeHit: number
   select(pageId: number, annot: AnnotInfo | null): void
   /** Called by a page layer whenever its annotation list is (re)loaded. */
   syncAnnotations(pageId: number, annots: AnnotInfo[]): void

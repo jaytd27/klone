@@ -92,7 +92,7 @@ export function OcrDialog({ pages, currentPage, onDone, onClose }: Props) {
   const run = async () => {
     cancelled.current = false
     setError(null)
-    setProgress({ done: 0, total: targets.length, step: 'Loading the text recognizer…' })
+    setProgress({ done: 0, total: targets.length, step: 'Loading the text recogniser…' })
     let worker: Tesseract.Worker | null = null
     const results: OcrPage[] = []
     try {
@@ -124,7 +124,7 @@ export function OcrDialog({ pages, currentPage, onDone, onClose }: Props) {
 
   return (
     <Modal
-      title="Recognize text (OCR)"
+      title="Run OCR"
       onClose={() => {
         cancelled.current = true
         if (!running) onClose()
@@ -134,18 +134,18 @@ export function OcrDialog({ pages, currentPage, onDone, onClose }: Props) {
           <>
             <span className="modal__note">Stopping keeps the pages finished so far.</span>
             <span className="modal__spacer" />
-            <button className="button" onClick={() => (cancelled.current = true)}>
+            <button className="kw-btn kw-btn--secondary" onClick={() => (cancelled.current = true)}>
               Stop
             </button>
           </>
         ) : (
           <>
             <span className="modal__spacer" />
-            <button className="button" onClick={onClose}>
+            <button className="kw-btn kw-btn--secondary" onClick={onClose}>
               Cancel
             </button>
-            <button className="button button--primary" onClick={run} disabled={!stats || !targets.length}>
-              Recognize {targets.length === 1 ? '1 page' : `${targets.length} pages`}
+            <button className="kw-btn kw-btn--primary" onClick={run} disabled={!stats || !targets.length}>
+              Run OCR on {targets.length === 1 ? '1 page' : `${targets.length} pages`}
             </button>
           </>
         )
@@ -156,17 +156,19 @@ export function OcrDialog({ pages, currentPage, onDone, onClose }: Props) {
           <p>
             Page {Math.min(progress.done + 1, progress.total)} of {progress.total}: {progress.step}
           </p>
-          <progress max={progress.total} value={progress.done} />
+          <div className="kw-progress" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
+            <div className="kw-progress__bar" style={{ width: `${(100 * progress.done) / Math.max(progress.total, 1)}%` }} />
+          </div>
         </div>
       ) : (
         <>
           <p className="modal__intro">
             Finds the words in scanned pages and adds them as invisible text, so you can search, select, highlight and redact them. The pages
-            look the same. Your file stays on this device; only the recognizer and language data are downloaded, once.
+            look the same. Your file stays on this device; only the recogniser and language data are downloaded, once.
           </p>
           <div className="form-grid">
             <label htmlFor="ocr-lang">Language</label>
-            <select id="ocr-lang" className="zoom-select" value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <select id="ocr-lang" className="kw-select" value={language} onChange={(e) => setLanguage(e.target.value)}>
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
                   {l.label}

@@ -1,1 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path fill="#2f6fde" d="M7 2h13l7 7v19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/><path fill="#a9c4f5" d="M20 2v5a2 2 0 0 0 2 2h5z"/><path fill="#fff" d="M11 12h3v4.2l4.2-4.2h3.9l-5 5 5.3 6h-4l-3.6-4.2-.8.8V23h-3z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Favicon · simplified: no whiskers, bigger eyes, so it reads at 16 px on any tab bar -->
+  <path d="M12 18V4l13 12h14l13-12v42a8 8 0 0 1-8 8H20a8 8 0 0 1-8-8z" fill="#A78BFA"/>
+  <path d="M12 4l13 12h-9zM52 4L39 16h9z" fill="#7C5CE6"/>
+  <ellipse cx="24" cy="31" rx="4.5" ry="5.5" fill="#17103A"/>
+  <ellipse cx="40" cy="31" rx="4.5" ry="5.5" fill="#17103A"/>
+  <path d="M29 40h6l-3 4z" fill="#17103A"/>
+</svg>

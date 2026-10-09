@@ -40,6 +40,8 @@ let idToIndex = new Map<number, number>()
 /** Per-page content revisions keyed by page id, plus one for whole-document changes. */
 const pageRevs = new Map<number, number>()
 let docRev = 0
+/** Pages edited since opening or the last save, by id (for the thumbnail dot). */
+const editedPages = new Set<number>()
 /** Extracted text per page id, for hit-testing text selections. */
 const textCache = new Map<number, mupdf.StructuredText>()
 
@@ -62,6 +64,7 @@ function closeDocument() {
   clearPageCache()
   clearTextCache()
   pageRevs.clear()
+  editedPages.clear()
   idToIndex.clear()
   doc?.destroy()
   doc = null
@@ -103,6 +106,7 @@ function state(): DocState {
       height: y1 - y0,
       rotation: rotate.isNumber() ? rotate.asNumber() : 0,
       rev: docRev + (pageRevs.get(id) ?? 0),
+      edited: editedPages.has(id),
     })
   }
   return {
@@ -111,6 +115,7 @@ function state(): DocState {
     canRedo: journalEnabled && d.canRedo(),
     dirty: journalPosition() !== savedPosition,
     redactions,
+    edits: journalPosition(),
   }
 }
 
@@ -172,6 +177,7 @@ function mutate(name: string, fn: (d: mupdf.PDFDocument) => void, scope: ChangeS
     clearPageCache()
     if (typeof scope === 'number') {
       pageRevs.set(scope, (pageRevs.get(scope) ?? 0) + 1)
+      editedPages.add(scope)
     } else {
       if (scope === 'document') clearTextCache()
       docRev++
@@ -224,6 +230,7 @@ function toTransferable(buffer: mupdf.Buffer): Uint8Array<ArrayBuffer> {
 function save(): Uint8Array<ArrayBuffer> {
   const bytes = toTransferable(requireDoc().saveToBuffer('garbage,compress'))
   savedPosition = journalPosition()
+  editedPages.clear()
   return bytes
 }
 
@@ -414,6 +421,23 @@ function pageText(pageId: number): mupdf.StructuredText {
     textCache.set(pageId, text)
   }
   return text
+}
+
+function allAnnots(): { page: number; annot: AnnotInfo }[] {
+  const d = requireDoc()
+  const out: { page: number; annot: AnnotInfo }[] = []
+  for (let i = 0; i < d.countPages(); i++) {
+    const page = loadPage(i)
+    const id = page.getObject().asIndirect()
+    for (const annot of page.getAnnotations()) {
+      if (!HIDDEN_TYPES.has(annot.getType())) out.push({ page: id, annot: describeAnnot(annot) })
+    }
+  }
+  return out
+}
+
+function pageTextChars(pageId: number): number {
+  return pageText(pageId).asText().replace(/\s/g, '').length
 }
 
 function textQuads(pageId: number, from: Point, to: Point): Quad[] {
@@ -899,7 +923,10 @@ function textLines(pageId: number): TextLine[] {
  * standard font. Empty `text` just deletes the line.
  */
 function replaceTextLine(pageId: number, line: TextLine, text: string): DocState {
-  return mutate('Edit text', (d) => {
+  textCache.get(pageId)?.destroy()
+  textCache.delete(pageId)
+  return mutate('Edit text', () => {
+    const d = requireDoc()
     const page = pageById(pageId)
     const obj = page.getObject()
 
@@ -933,7 +960,7 @@ function replaceTextLine(pageId: number, line: TextLine, text: string): DocState
       `BT /${fontKey} ${num(line.size)} Tf ${num(r)} ${num(g)} ${num(bl)} rg ` +
         `${num(rx)} ${num(ry)} ${num(ux)} ${num(uy)} ${num(ox)} ${num(oy)} Tm ${pdfString(text)} Tj ET`,
     )
-  })
+  }, pageId)
 }
 
 // ---------- Form fields ----------
@@ -1077,6 +1104,10 @@ function handle(req: WorkerRequest): { result: unknown; transfer?: Transferable[
       return { result: addOcrText(req.pages) }
     case 'textLines':
       return { result: textLines(req.page) }
+    case 'allAnnots':
+      return { result: allAnnots() }
+    case 'pageTextChars':
+      return { result: pageTextChars(req.page) }
     case 'replaceTextLine':
       return { result: replaceTextLine(req.page, req.line, req.text) }
   }

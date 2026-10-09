@@ -16,15 +16,40 @@ export type Tool =
   | 'redactArea'
   | 'editText'
 export type DrawingTool = Exclude<Tool, 'select'>
+export type ShapeTool = 'rect' | 'ellipse' | 'line' | 'arrow'
 
 export const MARKUP_TOOLS: ReadonlySet<Tool> = new Set(['highlight', 'underline', 'strikeout'])
+export const SHAPE_TOOLS: readonly ShapeTool[] = ['rect', 'ellipse', 'line', 'arrow']
 export const REDACT_TOOLS: ReadonlySet<Tool> = new Set(['redactText', 'redactArea'])
-/** Colour used to show redaction marks while drawing them. */
-export const REDACT_COLOR = '#e5383b'
 /** Tools whose annotations have a stroke width. */
 export const STROKE_TOOLS: ReadonlySet<Tool> = new Set(['rect', 'ellipse', 'line', 'arrow', 'ink'])
 
-export const PALETTE = ['#ffd400', '#ff9f1c', '#e5383b', '#f15bb5', '#2ecc71', '#2f6fde', '#7b2cbf', '#1c1f24']
+/**
+ * Colours that go on the document. They are the same in dark and light mode,
+ * and the UI accent (violet) is deliberately not among them.
+ */
+export const MARKERS = [
+  { hex: '#FFE873', name: 'Yellow' },
+  { hex: '#AAD65A', name: 'Green' },
+  { hex: '#8ED0FF', name: 'Blue' },
+  { hex: '#FFB3C7', name: 'Pink' },
+  { hex: '#FFC27A', name: 'Orange' },
+]
+export const INKS = [
+  { hex: '#1A1A1A', name: 'Black' },
+  { hex: '#475569', name: 'Slate' },
+  { hex: '#B42318', name: 'Red' },
+  { hex: '#1D4ED8', name: 'Blue' },
+  { hex: '#15803D', name: 'Green' },
+]
+/** How redaction marks are shown while drawing them. */
+export const REDACT_COLOR = '#B42318'
+
+/** Highlighters and notes take marker colours; everything else takes ink. */
+export function paletteFor(toolOrType: string) {
+  return toolOrType === 'highlight' || toolOrType === 'note' || toolOrType === 'Highlight' || toolOrType === 'Text' ? MARKERS : INKS
+}
+
 export const WIDTHS = [1, 2, 3, 5, 8]
 export const OPACITIES = [1, 0.75, 0.5, 0.25]
 export const FONT_SIZES = [8, 10, 12, 14, 18, 24, 36, 48, 72]
@@ -42,24 +67,24 @@ export function hexToRgb(hex: string): RGB {
 }
 
 export function rgbToHex(rgb: RGB): string {
-  return '#' + rgb.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('')
+  return '#' + rgb.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('').toUpperCase()
 }
 
 const style = (hex: string, width = 2, opacity = 1): AnnotStyle => ({ color: hexToRgb(hex), width, opacity })
 
 export const DEFAULT_STYLES: Record<DrawingTool, AnnotStyle> = {
-  highlight: style('#ffd400'),
-  underline: style('#2f6fde'),
-  strikeout: style('#e5383b'),
-  note: style('#ffd400'),
-  text: { ...style('#1c1f24'), font: 'Helv', fontSize: 14 },
-  rect: style('#e5383b'),
-  ellipse: style('#e5383b'),
-  line: style('#e5383b'),
-  arrow: style('#e5383b'),
-  ink: style('#2f6fde'),
-  // Redaction marks have no style of their own; these are placeholders.
+  highlight: style('#FFE873'),
+  underline: style('#1D4ED8'),
+  strikeout: style('#B42318'),
+  note: style('#FFE873'),
+  text: { ...style('#1A1A1A'), font: 'Helv', fontSize: 14 },
+  rect: style('#B42318'),
+  ellipse: style('#B42318'),
+  line: style('#B42318'),
+  arrow: style('#B42318'),
+  ink: style('#1D4ED8'),
+  // Redaction marks and text editing have no style of their own; placeholders.
   redactText: style(REDACT_COLOR),
   redactArea: style(REDACT_COLOR),
-  editText: style('#1c1f24'),
+  editText: style('#1A1A1A'),
 }

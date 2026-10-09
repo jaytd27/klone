@@ -1,0 +1,301 @@
+/* ==========================================================================
+   Kwoon — Graphite theme · CSS custom properties
+   Dark is the default. Light applies with [data-theme="light"] on <html>,
+   or automatically via prefers-color-scheme unless [data-theme="dark"] is set.
+   Generated from tokens/tokens.json · v1.0.0
+   ========================================================================== */
+
+:root {
+  /* ---- Primitives (mode-independent) ---- */
+  --kw-graphite-950: #08090A;
+  --kw-graphite-900: #0E0F11;
+  --kw-graphite-850: #16181B;
+  --kw-graphite-800: #1D2024;
+  --kw-graphite-700: #2A2E33;
+  --kw-graphite-600: #3A4047;
+  --kw-graphite-500: #5C636B;
+  --kw-graphite-400: #8C939B;
+  --kw-graphite-300: #A1A7AE;
+  --kw-graphite-200: #C9CDD1;
+  --kw-graphite-100: #DFE1E5;
+  --kw-graphite-50:  #E9EAED;
+  --kw-graphite-25:  #F5F6F7;
+  --kw-graphite-0:   #FFFFFF;
+  --kw-graphite-text-light: #ECEDEE;
+
+  --kw-violet-100: #EDE9FE;
+  --kw-violet-200: #DDD6FE;
+  --kw-violet-300: #C4B5FD;
+  --kw-violet-400: #A78BFA;
+  --kw-violet-500: #8B6CF0;
+  --kw-violet-600: #7C5CE6;
+  --kw-violet-700: #6B46E5;
+  --kw-violet-800: #5B3FCF;
+  --kw-violet-900: #17103A;
+
+  --kw-marker-yellow: #FFE873;
+  --kw-marker-green:  #AAD65A;
+  --kw-marker-blue:   #8ED0FF;
+  --kw-marker-pink:   #FFB3C7;
+  --kw-marker-orange: #FFC27A;
+
+  --kw-ink-black: #1A1A1A;
+  --kw-ink-slate: #475569;
+  --kw-ink-red:   #B42318;
+  --kw-ink-blue:  #1D4ED8;
+  --kw-ink-green: #15803D;
+
+  /* ---- The document itself: identical in both modes ---- */
+  --kw-page-surface:  #FFFFFF;
+  --kw-page-text:     #1A1A1A;
+  --kw-page-skeleton: #DCDDDF;
+
+  /* ---- Typography ---- */
+  --kw-font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --kw-font-body:    "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --kw-font-mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --kw-weight-regular: 400;
+  --kw-weight-medium: 500;
+  --kw-weight-semibold: 600;
+  --kw-weight-bold: 700;
+
+  --kw-text-2xs: 11px;
+  --kw-text-xs: 12px;
+  --kw-text-sm: 13px;   /* default interface size */
+  --kw-text-md: 14px;
+  --kw-text-lg: 16px;
+  --kw-text-xl: 20px;
+  --kw-text-2xl: 24px;
+  --kw-text-3xl: 32px;
+  --kw-text-4xl: 44px;
+
+  --kw-leading-tight: 1.1;
+  --kw-leading-snug: 1.25;
+  --kw-leading-normal: 1.5;
+
+  --kw-tracking-display: -0.02em;
+  --kw-tracking-label: 0.08em;
+  --kw-tracking-eyebrow: 0.12em;
+
+  /* ---- Space (4px base) ---- */
+  --kw-space-0: 0px;
+  --kw-space-1: 2px;
+  --kw-space-2: 4px;
+  --kw-space-3: 6px;
+  --kw-space-4: 8px;
+  --kw-space-5: 12px;
+  --kw-space-6: 16px;
+  --kw-space-7: 20px;
+  --kw-space-8: 24px;
+  --kw-space-9: 32px;
+  --kw-space-10: 40px;
+  --kw-space-11: 48px;
+  --kw-space-12: 64px;
+
+  /* ---- Radius ---- */
+  --kw-radius-xs: 4px;
+  --kw-radius-sm: 6px;
+  --kw-radius-md: 8px;
+  --kw-radius-lg: 12px;
+  --kw-radius-xl: 16px;
+  --kw-radius-pill: 999px;
+  --kw-radius-page: 0px;
+
+  /* ---- Sizes ---- */
+  --kw-control-sm: 30px;
+  --kw-control-md: 36px;
+  --kw-control-lg: 40px;
+  --kw-touch-min: 44px;
+
+  --kw-icon-sm: 14px;
+  --kw-icon-md: 16px;
+  --kw-icon-lg: 18px;
+  --kw-icon-xl: 20px;
+
+  --kw-layout-topbar: 52px;
+  --kw-layout-toolrow: 48px;
+  --kw-layout-statusbar: 28px;
+  --kw-layout-thumbnails: 184px;
+  --kw-layout-inspector: 296px;
+  --kw-layout-filmstrip: 104px;
+
+  --kw-border-hairline: 1px;
+  --kw-border-selection: 1.5px;
+  --kw-border-focus: 2px;
+
+  /* ---- Shadows ---- */
+  --kw-shadow-page:  0 1px 2px rgba(0,0,0,0.12), 0 8px 28px rgba(0,0,0,0.14);
+  --kw-shadow-float: 0 6px 18px rgba(0,0,0,0.22);
+  --kw-shadow-pin:   0 3px 8px rgba(0,0,0,0.25);
+  --kw-shadow-modal: 0 24px 64px rgba(0,0,0,0.35);
+
+  /* ---- Motion ---- */
+  --kw-duration-fast: 120ms;
+  --kw-duration-base: 180ms;
+  --kw-duration-slow: 240ms;
+  --kw-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --kw-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --kw-ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+
+  /* ---- Z-index ---- */
+  --kw-z-page: 0;
+  --kw-z-annotation: 10;
+  --kw-z-selection: 20;
+  --kw-z-float: 100;
+  --kw-z-popover: 200;
+  --kw-z-modal: 300;
+  --kw-z-toast: 400;
+
+  /* ======================================================================
+     Semantic — DARK (default)
+     ====================================================================== */
+  color-scheme: dark;
+
+  --kw-bg-app:     #0E0F11;
+  --kw-bg-panel:   #16181B;
+  --kw-bg-raised:  #1D2024;
+  --kw-bg-canvas:  #08090A;
+  --kw-bg-field:   #0E0F11;
+  --kw-bg-hover:   rgba(255,255,255,0.05);
+  --kw-bg-inverse: #ECEDEE;
+  --kw-bg-overlay: rgba(8,9,10,0.60);
+
+  --kw-border-default: #2A2E33;
+  --kw-border-strong:  #3A4047;
+  --kw-border-focus:   #A78BFA;
+
+  --kw-text-primary:   #ECEDEE;
+  --kw-text-secondary: #A1A7AE;
+  --kw-text-disabled:  #5C636B;
+  --kw-text-inverse:   #0E0F11;
+  --kw-text-on-accent: #17103A;
+  --kw-text-link:      #A78BFA;
+
+  --kw-accent:           #A78BFA;
+  --kw-accent-hover:     #C4B5FD;
+  --kw-accent-active:    #8B6CF0;
+  --kw-accent-subtle:    rgba(167,139,250,0.10);
+  --kw-accent-selection: rgba(167,139,250,0.42);
+  --kw-accent-text:      #A78BFA;
+
+  --kw-status-info:    #38BDF8;
+  --kw-status-success: #4ADE80;
+  --kw-status-warning: #F5B82E;
+  --kw-status-danger:  #FB7185;
+
+  --kw-float-bg: #1D2024;
+  --kw-float-fg: #ECEDEE;
+
+  /* Logo colours for the current mode */
+  --kw-logo-fill:    #A78BFA;
+  --kw-logo-shade:   #7C5CE6;
+  --kw-logo-feature: #17103A;   /* eyes, nose */
+  --kw-logo-whisker: #ECEDEE;
+}
+
+/* ======================================================================
+   Semantic — LIGHT
+   ====================================================================== */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --kw-bg-app:     #F5F6F7;
+  --kw-bg-panel:   #FFFFFF;
+  --kw-bg-raised:  #FFFFFF;
+  --kw-bg-canvas:  #E9EAED;
+  --kw-bg-field:   #FFFFFF;
+  --kw-bg-hover:   rgba(0,0,0,0.04);
+  --kw-bg-inverse: #16181B;
+  --kw-bg-overlay: rgba(22,24,27,0.40);
+
+  --kw-border-default: #DFE1E5;
+  --kw-border-strong:  #C9CDD1;
+  --kw-border-focus:   #6B46E5;
+
+  --kw-text-primary:   #16181B;
+  --kw-text-secondary: #5C636B;
+  --kw-text-disabled:  #A1A7AE;
+  --kw-text-inverse:   #FFFFFF;
+  --kw-text-on-accent: #FFFFFF;
+  --kw-text-link:      #6B46E5;
+
+  --kw-accent:           #6B46E5;
+  --kw-accent-hover:     #5B3FCF;
+  --kw-accent-active:    #5B3FCF;
+  --kw-accent-subtle:    rgba(107,70,229,0.08);
+  --kw-accent-selection: rgba(107,70,229,0.28);
+  --kw-accent-text:      #6B46E5;
+
+  --kw-status-info:    #0369A1;
+  --kw-status-success: #15803D;
+  --kw-status-warning: #B45309;
+  --kw-status-danger:  #BE123C;
+
+  --kw-float-bg: #16181B;
+  --kw-float-fg: #ECEDEE;
+
+  --kw-shadow-page:  0 1px 2px rgba(0,0,0,0.08), 0 8px 28px rgba(0,0,0,0.10);
+
+  --kw-logo-fill:    #6B46E5;
+  --kw-logo-shade:   #5B3FCF;
+  --kw-logo-feature: #17103A;
+  --kw-logo-whisker: #16181B;
+}
+
+/* Follow the OS when the app has not chosen a theme explicitly */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-theme="light"]) {
+    color-scheme: light;
+
+    --kw-bg-app:     #F5F6F7;
+    --kw-bg-panel:   #FFFFFF;
+    --kw-bg-raised:  #FFFFFF;
+    --kw-bg-canvas:  #E9EAED;
+    --kw-bg-field:   #FFFFFF;
+    --kw-bg-hover:   rgba(0,0,0,0.04);
+    --kw-bg-inverse: #16181B;
+    --kw-bg-overlay: rgba(22,24,27,0.40);
+
+    --kw-border-default: #DFE1E5;
+    --kw-border-strong:  #C9CDD1;
+    --kw-border-focus:   #6B46E5;
+
+    --kw-text-primary:   #16181B;
+    --kw-text-secondary: #5C636B;
+    --kw-text-disabled:  #A1A7AE;
+    --kw-text-inverse:   #FFFFFF;
+    --kw-text-on-accent: #FFFFFF;
+    --kw-text-link:      #6B46E5;
+
+    --kw-accent:           #6B46E5;
+    --kw-accent-hover:     #5B3FCF;
+    --kw-accent-active:    #5B3FCF;
+    --kw-accent-subtle:    rgba(107,70,229,0.08);
+    --kw-accent-selection: rgba(107,70,229,0.28);
+    --kw-accent-text:      #6B46E5;
+
+    --kw-status-info:    #0369A1;
+    --kw-status-success: #15803D;
+    --kw-status-warning: #B45309;
+    --kw-status-danger:  #BE123C;
+
+    --kw-float-bg: #16181B;
+    --kw-float-fg: #ECEDEE;
+
+    --kw-shadow-page:  0 1px 2px rgba(0,0,0,0.08), 0 8px 28px rgba(0,0,0,0.10);
+
+    --kw-logo-fill:    #6B46E5;
+    --kw-logo-shade:   #5B3FCF;
+    --kw-logo-feature: #17103A;
+    --kw-logo-whisker: #16181B;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --kw-duration-fast: 0ms;
+    --kw-duration-base: 0ms;
+    --kw-duration-slow: 0ms;
+  }
+}

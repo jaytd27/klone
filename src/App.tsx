@@ -1,25 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import './App.css'
 import { AnnotationContext, type AnnotationController, type AnnotSelection } from './annotations/context'
+import { MODES, TOOL_MODES, type Mode } from './annotations/modes'
 import { DEFAULT_STYLES, type DrawingTool, type Tool } from './annotations/tools'
-import { AnnotationBar } from './components/AnnotationBar'
-import { Sidebar } from './components/Sidebar'
-import { Toolbar } from './components/Toolbar'
-import { VIEWER_PADDING, Viewer, type ViewerHandle } from './components/Viewer'
+import { CommandPalette, type Command } from './components/CommandPalette'
+import { Inspector, type CommentEntry } from './components/Inspector'
+import { Logo } from './components/Logo'
 import { OcrDialog } from './components/OcrDialog'
 import { ApplyRedactionsDialog, FindRedactDialog, UnappliedRedactionsDialog } from './components/RedactionDialogs'
+import { Sidebar } from './components/Sidebar'
 import { SignatureDialog } from './components/SignatureDialog'
+import { StatusBar } from './components/StatusBar'
+import { Toasts, type ToastMessage } from './components/Toasts'
+import { ToolRow, type ToolRowActions } from './components/ToolRow'
+import { TopBar, type SearchState } from './components/TopBar'
+import { VIEWER_PADDING, Viewer, type ViewerHandle } from './components/Viewer'
 import { WatermarkDialog, type WatermarkPages } from './components/WatermarkDialog'
 import { loadImage } from './images'
 import { pdf } from './pdf/client'
-import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, FieldChange, OpenResult, Rect, TextLine, WatermarkSpec } from './pdf/protocol'
+import type {
+  AnnotInfo,
+  AnnotPatch,
+  AnnotSpec,
+  AnnotStyle,
+  DocState,
+  FieldChange,
+  OpenResult,
+  Rect,
+  SearchHit,
+  TextLine,
+  WatermarkSpec,
+} from './pdf/protocol'
+import { THEME_LABELS, getThemeMode, setThemeMode, type ThemeMode } from './theme/theme'
 import { MAX_SCALE, MIN_SCALE, ZOOM_PRESETS, clampScale } from './zoom'
 
 interface OpenDocument extends DocState {
   /** Changes on every open so the viewer starts fresh. */
   key: number
   name: string
+  size: number
 }
+
+type DialogName = 'signature' | 'watermark' | 'findRedact' | 'applyRedact' | 'downloadRedact' | 'ocr' | 'commands'
 
 const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -58,15 +80,19 @@ function formatRanges(indices: number[]): string {
 }
 
 const isPdfDrag = (event: DragEvent) => event.dataTransfer.types.includes('Files')
+/** Annotations listed under Comments: notes, plus anything someone wrote a comment on. */
+const isComment = (a: AnnotInfo) => a.type === 'Text' || (a.contents.trim() !== '' && a.type !== 'FreeText' && a.type !== 'Redact')
+const wide = (px: number) => window.innerWidth > px
 
 export default function App() {
   const [doc, setDoc] = useState<OpenDocument | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  /** An informational message, optionally with an action button. */
-  const [notice, setNotice] = useState<{ text: string; action?: { label: string; run(): void } } | null>(null)
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
   const [dragging, setDragging] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 720)
+  const [sidebarOpen, setSidebarOpen] = useState(() => wide(900))
+  const [inspectorOpen, setInspectorOpen] = useState(() => wide(1200))
+  const [theme, setTheme] = useState<ThemeMode>(getThemeMode)
+  const [mode, setMode] = useState<Mode>('view')
   const [currentPage, setCurrentPage] = useState(0)
   /** Explicitly picked pages; empty means "the current page". */
   const [pickedIds, setPickedIds] = useState<Set<number>>(new Set())
@@ -77,11 +103,17 @@ export default function App() {
   const [toolStyles, setToolStyles] = useState<Record<DrawingTool, AnnotStyle>>(DEFAULT_STYLES)
   const [annotSelection, setAnnotSelection] = useState<AnnotSelection | null>(null)
   const [focusComment, setFocusComment] = useState(false)
+  const [dialog, setDialog] = useState<DialogName | null>(null)
+  const [search, setSearch] = useState<SearchState>({ query: '', count: null, index: 0 })
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([])
+  const [comments, setComments] = useState<CommentEntry[]>([])
+  const [textChars, setTextChars] = useState<number | null>(null)
   const viewerRef = useRef<ViewerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const insertInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
-  const [dialog, setDialog] = useState<'signature' | 'watermark' | 'findRedact' | 'applyRedact' | 'downloadRedact' | 'ocr' | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const toastId = useRef(0)
   /** Guards against overlapping operations computed from stale page indices. */
   const opRunning = useRef(false)
   /**
@@ -106,6 +138,17 @@ export default function App() {
     () => pages.flatMap((page, index) => (selectedIds.has(page.id) ? [index] : [])),
     [pages, selectedIds],
   )
+  const pageSelectionLabel = selectedIndices.length > 1 ? `${selectedIndices.length} pages` : `Page ${currentPage + 1}`
+
+  // ---------- Toasts ----------
+
+  const notify = useCallback((kind: ToastMessage['kind'], text: string, action?: ToastMessage['action']) => {
+    const id = ++toastId.current
+    setToasts((list) => [...list.filter((t) => t.text !== text), { id, kind, text, action }].slice(-3))
+  }, [])
+  const dismissToast = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), [])
+
+  // ---------- Document state ----------
 
   useEffect(() => {
     if (pendingScroll.current === null) return
@@ -120,21 +163,58 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [doc?.dirty])
 
-  /** Runs one operation at a time, reporting failures in the banner. */
-  const run = useCallback(async (what: string, operation: () => Promise<void>) => {
-    if (opRunning.current) return
-    opRunning.current = true
-    setBusy(true)
-    setError(null)
-    try {
-      await operation()
-    } catch (err) {
-      setError(`${what}: ${errorMessage(err)}`)
-    } finally {
-      opRunning.current = false
-      setBusy(false)
+  // The comments list follows every change to the document.
+  useEffect(() => {
+    if (!doc) return
+    let live = true
+    pdf.allAnnots().then(
+      (list) => {
+        if (!live) return
+        const index = new Map(doc.pages.map((p, i) => [p.id, i]))
+        setComments(
+          list
+            .filter((e) => isComment(e.annot) && index.has(e.page))
+            .map((e) => ({ ...e, pageIndex: index.get(e.page)! }))
+            .sort((a, b) => a.pageIndex - b.pageIndex || a.annot.bounds[1] - b.annot.bounds[1]),
+        )
+      },
+      () => {},
+    )
+    return () => {
+      live = false
     }
-  }, [])
+  }, [doc])
+
+  const current = pages[currentPage]
+  useEffect(() => {
+    if (!current) return
+    let live = true
+    pdf.pageTextChars(current.id).then(
+      (n) => live && setTextChars(n),
+      () => live && setTextChars(null),
+    )
+    return () => {
+      live = false
+    }
+  }, [current])
+
+  /** Runs one operation at a time, reporting failures as an error toast. */
+  const run = useCallback(
+    async (what: string, operation: () => Promise<void>) => {
+      if (opRunning.current) return
+      opRunning.current = true
+      setBusy(true)
+      try {
+        await operation()
+      } catch (err) {
+        notify('error', `${what}: ${errorMessage(err)}`)
+      } finally {
+        opRunning.current = false
+        setBusy(false)
+      }
+    },
+    [notify],
+  )
 
   const applyState = useCallback((state: DocState, options: { pick?: Set<number>; scrollTo?: number } = {}) => {
     setDoc((prev) => (prev ? { ...prev, ...state } : prev))
@@ -152,26 +232,29 @@ export default function App() {
         if (!state) {
           // Password prompt cancelled; the worker has already swapped documents.
           setDoc(null)
-          document.title = 'Klone'
+          document.title = 'Kwoon'
           return
         }
-        setDoc((prev) => ({ ...state, key: (prev?.key ?? 0) + 1, name: file.name }))
+        setDoc((prev) => ({ ...state, key: (prev?.key ?? 0) + 1, name: file.name, size: file.size }))
         setPickedIds(new Set())
         setAnnotSelection(null)
         setCurrentPage(0)
-        document.title = `${file.name} – Klone`
-        setNotice(null)
+        setSearch({ query: '', count: null, index: 0 })
+        setSearchHits([])
+        setMode('view')
+        setTool('select')
+        document.title = `${file.name} – Kwoon`
         // A document with no text at all is almost certainly a scan.
         const stats = await pdf.textStats()
         if (stats.length && stats.every((s) => s.chars === 0)) {
-          setNotice({
-            text: 'This PDF looks like a scan, so its text can’t be searched or selected yet.',
-            action: { label: 'Recognize text', run: () => setDialog('ocr') },
+          notify('info', 'This PDF looks like a scan, so its text can’t be searched or selected yet.', {
+            label: 'Run OCR',
+            run: () => setDialog('ocr'),
           })
         }
       })
     },
-    [doc, run],
+    [doc, run, notify],
   )
 
   /** Saves and downloads; `applyRedactionsFirst` applies pending redaction marks in the same step. */
@@ -179,31 +262,36 @@ export default function App() {
     (applyRedactionsFirst = false) => {
       if (!doc) return
       setDialog(null)
-      void run("Couldn't save", async () => {
+      void run("Couldn't export", async () => {
         if (applyRedactionsFirst) {
           applyState(await pdf.applyRedactions())
           setAnnotSelection(null)
         }
-        downloadBytes(await pdf.save(), doc.name)
-        setDoc((prev) => (prev ? { ...prev, dirty: false } : prev))
+        const bytes = await pdf.save()
+        downloadBytes(bytes, doc.name)
+        setDoc((prev) =>
+          prev ? { ...prev, dirty: false, size: bytes.length, pages: prev.pages.map((p) => ({ ...p, edited: false })) } : prev,
+        )
       })
     },
     [doc, run, applyState],
   )
 
-  const download = useCallback(() => {
+  const exportFile = useCallback(() => {
     if (!doc) return
     // Marks alone hide nothing: make sure that's a deliberate choice.
     if (doc.redactions > 0) setDialog('downloadRedact')
     else saveFile()
   }, [doc, saveFile])
 
+  // ---------- Pages ----------
+
   const rotate = (degrees: number) =>
     void run("Couldn't rotate", async () => applyState(await pdf.rotate(selectedIndices, degrees)))
 
   const deleteSelected = () => {
     if (selectedIndices.length >= pages.length) {
-      setError('A PDF needs at least one page, so you can’t delete them all.')
+      notify('error', 'A PDF needs at least one page, so you can’t delete them all.')
       return
     }
     void run("Couldn't delete", async () =>
@@ -269,18 +357,26 @@ export default function App() {
     [run, applyState],
   )
 
-  // ---------- Annotations ----------
+  // ---------- Modes, tools and annotations ----------
 
   const toolStyle = toolStyles[tool === 'select' ? 'rect' : tool]
 
   const changeTool = useCallback((next: Tool) => {
     setTool(next)
+    if (next !== 'select') setMode(TOOL_MODES[next])
+    setAnnotSelection(null)
+  }, [])
+
+  const changeMode = useCallback((next: Mode) => {
+    setMode(next)
+    setTool('select')
     setAnnotSelection(null)
   }, [])
 
   const selectAnnot = useCallback((pageId: number, annot: AnnotInfo | null) => {
     setAnnotSelection(annot ? { pageId, annotId: annot.id, info: annot } : null)
     setFocusComment(false)
+    if (annot) setInspectorOpen(true)
   }, [])
 
   const syncAnnotations = useCallback((pageId: number, annots: AnnotInfo[]) => {
@@ -299,8 +395,9 @@ export default function App() {
         applyState(state)
         setAnnotSelection({ pageId, annotId: annot, info: null })
         if (spec.kind === 'note') {
-          // Notes are one-off: go straight to typing the comment.
+          // Comments are one-off: go straight to typing.
           setFocusComment(true)
+          setInspectorOpen(true)
           setTool('select')
         }
       }),
@@ -346,7 +443,8 @@ export default function App() {
     void run("Couldn't mark the matches", async () => {
       const { state, count } = await pdf.markRedactions(query, matchCase)
       applyState(state)
-      if (!count) setError(`No matches for “${query}”.`)
+      if (count) notify('info', `Marked ${count} ${count === 1 ? 'match' : 'matches'} for redaction. Nothing is removed until you apply.`)
+      else notify('error', `No matches for “${query}”.`)
     })
   }
 
@@ -356,6 +454,7 @@ export default function App() {
       applyState(await pdf.applyRedactions())
       setAnnotSelection(null)
       setTool('select')
+      notify('success', 'Redactions applied. The content under them is gone.')
     })
   }
 
@@ -380,11 +479,11 @@ export default function App() {
         try {
           applyState(await pdf.setField(pageId, widgetId, change))
         } catch (err) {
-          if ((err as Error)?.name !== 'AbortError') setError(`Couldn't fill in the field: ${errorMessage(err)}`)
+          if ((err as Error)?.name !== 'AbortError') notify('error', `Couldn't fill in the field: ${errorMessage(err)}`)
         }
       })
     },
-    [applyState],
+    [applyState, notify],
   )
 
   const editTextLine = useCallback(
@@ -397,21 +496,61 @@ export default function App() {
     if (tool !== 'select') setToolStyles((styles) => ({ ...styles, [tool]: { ...styles[tool], ...patch } }))
   }
 
-  const annotationController = useMemo<AnnotationController>(
-    () => ({
-      tool,
-      style: toolStyle,
-      busy,
-      selection: annotSelection,
-      select: selectAnnot,
-      syncAnnotations,
-      create: createAnnot,
-      updateSelected: updateSelectedAnnot,
-      fillField,
-      editTextLine,
-    }),
-    [tool, toolStyle, busy, annotSelection, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot, fillField, editTextLine],
+  const updateSelectedAndStyle = (patch: AnnotPatch) => {
+    updateSelectedAnnot(patch)
+    // Restyling what you just drew also sets the style for the next one.
+    const { color, width, opacity, font, fontSize } = patch
+    const style = Object.fromEntries(Object.entries({ color, width, opacity, font, fontSize }).filter(([, v]) => v !== undefined))
+    if (Object.keys(style).length) changeToolStyle(style)
+  }
+
+  // ---------- Search ----------
+
+  const showHit = useCallback(
+    (hits: SearchHit[], index: number) => {
+      const hit = hits[index]
+      if (!hit) return
+      const pageIndex = pages.findIndex((p) => p.id === hit.page)
+      if (pageIndex >= 0) viewerRef.current?.scrollToPage(pageIndex, Math.min(...hit.quads.map((q) => q[1])))
+    },
+    [pages],
   )
+
+  const runSearch = (query: string) => {
+    const q = query.trim()
+    if (!q) {
+      setSearch({ query: '', count: null, index: 0 })
+      setSearchHits([])
+      return
+    }
+    pdf.search(q).then(
+      (hits) => {
+        setSearchHits(hits)
+        setSearch({ query, count: hits.length, index: 0 })
+        if (hits.length) showHit(hits, 0)
+      },
+      (err) => notify('error', `Search failed: ${errorMessage(err)}`),
+    )
+  }
+
+  const stepSearch = (step: 1 | -1) => {
+    if (!searchHits.length) return
+    const index = (search.index + step + searchHits.length) % searchHits.length
+    setSearch((s) => ({ ...s, index }))
+    showHit(searchHits, index)
+  }
+
+  const clearSearch = () => {
+    setSearch({ query: '', count: null, index: 0 })
+    setSearchHits([])
+  }
+
+  // ---------- View ----------
+
+  const changeTheme = (next: ThemeMode) => {
+    setThemeMode(next)
+    setTheme(next)
+  }
 
   const setZoom = useCallback((value: number | 'fit') => {
     if (value === 'fit') {
@@ -436,12 +575,82 @@ export default function App() {
   )
 
   const goToPage = useCallback(
-    (index: number) => {
+    (index: number, y?: number) => {
       if (!pages.length) return
-      viewerRef.current?.scrollToPage(Math.min(Math.max(index, 0), pages.length - 1))
+      viewerRef.current?.scrollToPage(Math.min(Math.max(index, 0), pages.length - 1), y)
     },
     [pages],
   )
+
+  const openComment = (entry: CommentEntry) => {
+    setTool('select')
+    goToPage(entry.pageIndex, entry.annot.bounds[1])
+    selectAnnot(entry.page, entry.annot)
+  }
+
+  const annotationController = useMemo<AnnotationController>(
+    () => ({
+      tool,
+      style: toolStyle,
+      busy,
+      selection: annotSelection,
+      searchHits,
+      activeHit: search.index,
+      select: selectAnnot,
+      syncAnnotations,
+      create: createAnnot,
+      updateSelected: updateSelectedAnnot,
+      fillField,
+      editTextLine,
+    }),
+    [tool, toolStyle, busy, annotSelection, searchHits, search.index, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot, fillField, editTextLine],
+  )
+
+  const actions: ToolRowActions = {
+    addImage: () => imageInputRef.current?.click(),
+    addSignature: () => setDialog('signature'),
+    addWatermark: () => setDialog('watermark'),
+    runOcr: () => setDialog('ocr'),
+    findRedact: () => setDialog('findRedact'),
+    applyRedactions: () => setDialog('applyRedact'),
+    rotate,
+    deletePages: deleteSelected,
+    extractPages: extract,
+    insertBlank,
+    insertPdf: () => insertInputRef.current?.click(),
+  }
+
+  const commands: Command[] = [
+    { id: 'open', label: 'Open a PDF…', icon: 'open', shortcut: 'Ctrl O', run: () => fileInputRef.current?.click() },
+    { id: 'export', label: 'Export the PDF', icon: 'export', keywords: 'download save', shortcut: 'Ctrl S', disabled: !doc, run: exportFile },
+    { id: 'search', label: 'Search text', icon: 'search', keywords: 'find', shortcut: 'Ctrl F', disabled: !doc, run: () => searchInputRef.current?.focus() },
+    { id: 'ocr', label: 'Run OCR (recognise text in scans)', icon: 'ocr', keywords: 'scan searchable', disabled: !doc, run: actions.runOcr },
+    { id: 'merge', label: 'Insert pages from PDFs (merge)…', icon: 'merge', keywords: 'combine append', disabled: !doc, run: actions.insertPdf },
+    { id: 'extract', label: `Extract ${pageSelectionLabel.toLowerCase()} to a new PDF`, icon: 'extract', keywords: 'split save pages', disabled: !doc, run: extract },
+    { id: 'blank', label: 'Insert a blank page', icon: 'filePlus', keywords: 'add page', disabled: !doc, run: insertBlank },
+    { id: 'rotl', label: `Rotate ${pageSelectionLabel.toLowerCase()} left`, icon: 'revert', disabled: !doc, run: () => rotate(-90) },
+    { id: 'rotr', label: `Rotate ${pageSelectionLabel.toLowerCase()} right`, icon: 'rotate', disabled: !doc, run: () => rotate(90) },
+    { id: 'delete', label: `Delete ${pageSelectionLabel.toLowerCase()}`, icon: 'trash', keywords: 'remove pages', disabled: !doc || selectedIndices.length >= pages.length, run: deleteSelected },
+    { id: 'watermark', label: 'Add a watermark…', icon: 'watermark', keywords: 'stamp confidential draft', disabled: !doc, run: actions.addWatermark },
+    { id: 'signature', label: 'Add a signature…', icon: 'sign', keywords: 'sign', disabled: !doc, run: actions.addSignature },
+    { id: 'image', label: 'Add an image…', icon: 'image', keywords: 'picture logo stamp', disabled: !doc, run: actions.addImage },
+    { id: 'findredact', label: 'Find and redact…', icon: 'redact', keywords: 'remove hide black out', disabled: !doc, run: actions.findRedact },
+    { id: 'applyredact', label: 'Apply redactions', icon: 'protect', disabled: !doc?.redactions, run: actions.applyRedactions },
+    ...MODES.map((m) => ({ id: `mode-${m.mode}`, label: `Switch to ${m.label}`, icon: 'more' as const, keywords: 'mode', disabled: !doc, run: () => changeMode(m.mode) })),
+    { id: 'undo', label: 'Undo', icon: 'undo', shortcut: 'Ctrl Z', disabled: !doc?.canUndo, run: () => history('undo') },
+    { id: 'redo', label: 'Redo', icon: 'redo', shortcut: 'Ctrl Y', disabled: !doc?.canRedo, run: () => history('redo') },
+    { id: 'fit', label: 'Fit page width', icon: 'fitWidth', keywords: 'zoom', shortcut: 'Ctrl 0', disabled: !doc, run: () => setZoom('fit') },
+    { id: 'thumbs', label: sidebarOpen ? 'Hide page thumbnails' : 'Show page thumbnails', icon: 'sidebar', disabled: !doc, run: () => setSidebarOpen((o) => !o) },
+    { id: 'inspector', label: inspectorOpen ? 'Hide the inspector' : 'Show the inspector', icon: 'inspector', disabled: !doc, run: () => setInspectorOpen((o) => !o) },
+    ...(['dark', 'light', 'system'] as ThemeMode[]).map((m) => ({
+      id: `theme-${m}`,
+      label: `Theme: ${THEME_LABELS[m]}`,
+      icon: (m === 'dark' ? 'moon' : m === 'light' ? 'sun' : 'monitor') as 'moon',
+      keywords: 'appearance colour',
+      disabled: theme === m,
+      run: () => changeTheme(m),
+    })),
+  ]
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -449,8 +658,8 @@ export default function App() {
       const target = event.target instanceof HTMLElement ? event.target : null
       const inField = target?.matches('input, textarea, select') ?? false
       if (!(event.ctrlKey || event.metaKey)) {
-        // The sidebar handles Delete for pages itself.
-        if (!doc || inField || target?.closest('.sidebar')) return
+        // The thumbnails handle Delete for pages themselves.
+        if (!doc || inField || target?.closest('.thumbs')) return
         if (key === 'escape') {
           if (annotSelection) setAnnotSelection(null)
           else setTool('select')
@@ -462,9 +671,11 @@ export default function App() {
         event.preventDefault()
         return
       }
-      if (key === 'o') fileInputRef.current?.click()
+      if (key === 'k') setDialog((d) => (d === 'commands' ? null : 'commands'))
+      else if (key === 'o') fileInputRef.current?.click()
       else if (!doc) return
-      else if (key === 's') download()
+      else if (key === 's') exportFile()
+      else if (key === 'f') searchInputRef.current?.focus()
       else if ((key === 'z' && event.shiftKey) || key === 'y') {
         if (inField) return
         history('redo')
@@ -479,13 +690,13 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [doc, download, history, zoomStep, setZoom, annotSelection, deleteSelectedAnnot])
+  }, [doc, exportFile, history, zoomStep, setZoom, annotSelection, deleteSelectedAnnot])
 
   return (
     <div
-      className="app"
+      className="kw-shell app"
       onDragOver={(e) => {
-        // The sidebar handles its own drops (inserting pages).
+        // The thumbnails handle their own drops (inserting pages).
         if (e.defaultPrevented || !isPdfDrag(e)) {
           setDragging(false)
           return
@@ -509,6 +720,7 @@ export default function App() {
         type="file"
         accept="application/pdf,.pdf"
         hidden
+        data-role="open"
         onChange={(e) => {
           const file = e.target.files?.[0]
           if (file) openFile(file)
@@ -539,86 +751,56 @@ export default function App() {
         }}
       />
 
-      <Toolbar
-        fileName={doc ? `${doc.name}${doc.dirty ? ' •' : ''}` : null}
-        pageCount={pages.length}
-        currentPage={currentPage}
-        scale={scale}
-        fitWidth={fitWidth}
-        sidebarOpen={sidebarOpen}
+      <TopBar
+        fileName={doc?.name ?? null}
+        dirty={doc?.dirty ?? false}
+        fileSize={doc?.size ?? null}
+        mode={mode}
         busy={busy}
-        canUndo={doc?.canUndo ?? false}
-        canRedo={doc?.canRedo ?? false}
+        theme={theme}
+        search={search}
+        searchInputRef={searchInputRef}
+        onModeChange={changeMode}
+        onSearch={runSearch}
+        onSearchStep={stepSearch}
+        onSearchClear={clearSearch}
         onOpen={() => fileInputRef.current?.click()}
-        onUndo={() => history('undo')}
-        onRedo={() => history('redo')}
-        onDownload={download}
-        onOcr={() => setDialog('ocr')}
-        onToggleSidebar={() => setSidebarOpen((open) => !open)}
-        onGoToPage={goToPage}
-        onZoomIn={() => zoomStep(1)}
-        onZoomOut={() => zoomStep(-1)}
-        onSetZoom={setZoom}
+        onExport={exportFile}
+        onCommand={() => setDialog('commands')}
+        onThemeChange={changeTheme}
       />
 
-      {doc && (
-        <AnnotationBar
-          tool={tool}
-          toolStyle={toolStyle}
-          selection={annotSelection}
-          busy={busy}
-          focusComment={focusComment}
-          onToolChange={changeTool}
-          onToolStyleChange={changeToolStyle}
-          onUpdateSelected={(patch) => {
-            updateSelectedAnnot(patch)
-            // Restyling what you just drew also sets the style for the next one.
-            const { color, width, opacity, font, fontSize } = patch
-            const style = Object.fromEntries(Object.entries({ color, width, opacity, font, fontSize }).filter(([, v]) => v !== undefined))
-            if (Object.keys(style).length) {
-              changeToolStyle(style)
-            }
-          }}
-          onDeleteSelected={deleteSelectedAnnot}
-          onAddImage={() => imageInputRef.current?.click()}
-          onAddSignature={() => setDialog('signature')}
-          onAddWatermark={() => setDialog('watermark')}
-          redactions={doc.redactions}
-          onFindRedact={() => setDialog('findRedact')}
-          onApplyRedactions={() => setDialog('applyRedact')}
-        />
-      )}
-
-      {notice && !error && (
-        <div className="banner banner--info" role="status">
-          <span>{notice.text}</span>
-          <span className="banner__actions">
-            {notice.action && (
-              <button
-                className="button button--compact"
-                onClick={() => {
-                  notice.action!.run()
-                  setNotice(null)
-                }}
-              >
-                {notice.action.label}
-              </button>
-            )}
-            <button className="banner__close" onClick={() => setNotice(null)} aria-label="Dismiss">
-              ×
-            </button>
-          </span>
-        </div>
-      )}
-      {error && (
-        <div className="banner" role="alert">
-          <span>{error}</span>
-          <button className="banner__close" onClick={() => setError(null)} aria-label="Dismiss">×</button>
-        </div>
-      )}
-
       <AnnotationContext.Provider value={annotationController}>
-        <main className="workspace">
+        {doc && (
+          <ToolRow
+            mode={mode}
+            tool={tool}
+            busy={busy}
+            redactions={doc.redactions}
+            pageSelectionLabel={pageSelectionLabel}
+            canDeletePages={selectedIndices.length < pages.length}
+            sidebarOpen={sidebarOpen}
+            inspectorOpen={inspectorOpen}
+            canUndo={doc.canUndo}
+            canRedo={doc.canRedo}
+            currentPage={currentPage}
+            pageCount={pages.length}
+            scale={scale}
+            fitWidth={fitWidth}
+            actions={actions}
+            onToolChange={changeTool}
+            onToggleSidebar={() => setSidebarOpen((o) => !o)}
+            onToggleInspector={() => setInspectorOpen((o) => !o)}
+            onUndo={() => history('undo')}
+            onRedo={() => history('redo')}
+            onGoToPage={goToPage}
+            onZoomIn={() => zoomStep(1)}
+            onZoomOut={() => zoomStep(-1)}
+            onSetZoom={setZoom}
+          />
+        )}
+
+        <main className="kw-body workspace">
           {doc ? (
             <>
               {sidebarOpen && (
@@ -630,11 +812,7 @@ export default function App() {
                   busy={busy}
                   onSelectionChange={setPickedIds}
                   onNavigate={goToPage}
-                  onRotate={rotate}
                   onDelete={deleteSelected}
-                  onExtract={extract}
-                  onInsertBlank={insertBlank}
-                  onInsertFromFile={() => insertInputRef.current?.click()}
                   onMove={move}
                   onDropFiles={insertFiles}
                 />
@@ -648,21 +826,50 @@ export default function App() {
                 onWidthChange={setViewerWidth}
                 onZoom={zoomBy}
               />
+              {inspectorOpen && (
+                <Inspector
+                  mode={mode}
+                  tool={tool}
+                  toolStyle={toolStyle}
+                  selection={annotSelection}
+                  busy={busy}
+                  focusComment={focusComment}
+                  comments={comments}
+                  pageSelectionLabel={pageSelectionLabel}
+                  canDeletePages={selectedIndices.length < pages.length}
+                  actions={actions}
+                  onToolStyleChange={changeToolStyle}
+                  onUpdateSelected={updateSelectedAndStyle}
+                  onDeleteSelected={deleteSelectedAnnot}
+                  onOpenComment={openComment}
+                />
+              )}
             </>
           ) : (
             <div className="empty-state">
-              <div className="empty-state__card">
-                <h1>Open a PDF to get started</h1>
-                <p>Drop a file anywhere in this window, or choose one from your computer. Files stay on your device.</p>
-                <button className="button button--primary" onClick={() => fileInputRef.current?.click()} disabled={busy}>
-                  {busy ? 'Opening…' : 'Choose a PDF'}
-                </button>
-              </div>
+              <Logo size={96} className={busy ? 'kw-mark--blink' : ''} />
+              <h1>{busy ? 'Opening…' : 'Drop a PDF here'}</h1>
+              <p className="kw-muted">Or choose one from your computer. Everything happens in this browser; your files stay on your device.</p>
+              <button className="kw-btn kw-btn--primary kw-btn--lg" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                <span>Choose a PDF</span>
+              </button>
             </div>
           )}
         </main>
       </AnnotationContext.Provider>
 
+      <StatusBar
+        page={current ?? null}
+        currentPage={currentPage}
+        pageCount={pages.length}
+        edits={doc?.edits ?? 0}
+        redactions={doc?.redactions ?? 0}
+        textChars={current ? textChars : null}
+      />
+
+      <Toasts toasts={toasts} onDismiss={dismissToast} />
+
+      {dialog === 'commands' && <CommandPalette commands={commands} onClose={() => setDialog(null)} />}
       {dialog === 'signature' && (
         <SignatureDialog
           onClose={() => setDialog(null)}
@@ -672,9 +879,7 @@ export default function App() {
           }}
         />
       )}
-      {dialog === 'watermark' && (
-        <WatermarkDialog selectedCount={pickedIds.size} onClose={() => setDialog(null)} onApply={addWatermark} />
-      )}
+      {dialog === 'watermark' && <WatermarkDialog selectedCount={pickedIds.size} onClose={() => setDialog(null)} onApply={addWatermark} />}
       {dialog === 'ocr' && (
         <OcrDialog
           pages={pages}
@@ -682,30 +887,26 @@ export default function App() {
           onClose={() => setDialog(null)}
           onDone={(results) => {
             setDialog(null)
-            void run("Couldn't add the recognized text", async () => {
+            void run("Couldn't add the recognised text", async () => {
               const found = results.filter((r) => r.words.length)
               if (found.length) applyState(await pdf.addOcrText(found))
               const words = found.reduce((n, r) => n + r.words.length, 0)
               const pagesWord = (n: number) => (n === 1 ? '1 page' : `${n} pages`)
-              const empty = results
-                .filter((r) => !r.words.length)
-                .map((r) => pages.findIndex((p) => p.id === r.page) + 1)
+              const empty = results.filter((r) => !r.words.length).map((r) => pages.findIndex((p) => p.id === r.page) + 1)
               const emptyNote = empty.length
                 ? ` Nothing readable on page${empty.length === 1 ? '' : 's'} ${empty.join(', ')}; if a page is sideways, rotate it and run OCR again.`
                 : ''
-              setNotice({
-                text: words
-                  ? `Recognized ${words} words on ${pagesWord(found.length)}. The text is now searchable.${emptyNote}`
-                  : `No text was found.${emptyNote}`,
-              })
+              notify(
+                words ? 'success' : 'info',
+                words ? `Recognised ${words} words on ${pagesWord(found.length)}. The text is now searchable.${emptyNote}` : `No text was found.${emptyNote}`,
+              )
+              setTextChars(null)
             })
           }}
         />
       )}
       {dialog === 'findRedact' && <FindRedactDialog onClose={() => setDialog(null)} onMark={markRedactions} />}
-      {dialog === 'applyRedact' && doc && (
-        <ApplyRedactionsDialog count={doc.redactions} onClose={() => setDialog(null)} onApply={applyRedactions} />
-      )}
+      {dialog === 'applyRedact' && doc && <ApplyRedactionsDialog count={doc.redactions} onClose={() => setDialog(null)} onApply={applyRedactions} />}
       {dialog === 'downloadRedact' && doc && (
         <UnappliedRedactionsDialog
           count={doc.redactions}
@@ -716,8 +917,8 @@ export default function App() {
       )}
 
       {dragging && (
-        <div className="drop-overlay">
-          {doc ? 'Drop to open instead — or drop on the thumbnails to insert pages' : 'Drop to open'}
+        <div className="drop-overlay" aria-hidden="true">
+          <div className="kw-dropzone drop-overlay__zone">{doc ? 'Drop to open — or drop on the thumbnails to insert pages' : 'Drop to open'}</div>
         </div>
       )}
     </div>
