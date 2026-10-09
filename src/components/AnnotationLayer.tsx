@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { useAnnotations } from '../annotations/context'
-import { FONTS, MARKUP_TOOLS, RESIZABLE_TYPES, rgbToHex, type Tool } from '../annotations/tools'
+import { FONTS, MARKUP_TOOLS, REDACT_COLOR, RESIZABLE_TYPES, rgbToHex, type Tool } from '../annotations/tools'
 import { pdf } from '../pdf/client'
 import type { AnnotInfo, PageInfo, Point, Quad, Rect, TextFont } from '../pdf/protocol'
 
 type Draft =
-  | { kind: 'shape'; tool: 'rect' | 'ellipse' | 'line' | 'arrow'; from: Point; to: Point }
+  | { kind: 'shape'; tool: 'rect' | 'ellipse' | 'line' | 'arrow' | 'redactArea'; from: Point; to: Point }
   | { kind: 'ink'; points: Point[] }
   | { kind: 'markup'; from: Point; quads: Quad[] }
   | { kind: 'move'; from: Point; to: Point }
@@ -24,7 +24,9 @@ interface Props {
   scale: number
 }
 
-const SHAPE_TOOLS: ReadonlySet<Tool> = new Set(['rect', 'ellipse', 'line', 'arrow'])
+const SHAPE_TOOLS: ReadonlySet<Tool> = new Set(['rect', 'ellipse', 'line', 'arrow', 'redactArea'])
+/** Tools that select text by dragging across it. */
+const TEXT_TOOLS: ReadonlySet<Tool> = new Set([...MARKUP_TOOLS, 'redactText'])
 /** Must match TEXT_PADDING in the worker so edited text lines up with the rendering. */
 const TEXT_PADDING = 4
 const HANDLE_SIZE = 8
@@ -41,6 +43,8 @@ const CURSORS: Record<Tool, string> = {
   line: 'crosshair',
   arrow: 'crosshair',
   ink: 'crosshair',
+  redactText: 'text',
+  redactArea: 'crosshair',
 }
 
 function contains([x0, y0, x1, y1]: Rect, [x, y]: Point, slop: number) {
@@ -95,7 +99,7 @@ export function AnnotationLayer({ page, scale }: Props) {
   }, [page.id, page.rev])
 
   const { tool, style, selection } = ctx
-  const color = rgbToHex(style.color)
+  const color = tool === 'redactText' || tool === 'redactArea' ? REDACT_COLOR : rgbToHex(style.color)
 
   const toPage = (event: { clientX: number; clientY: number }): Point => {
     const rect = svgRef.current!.getBoundingClientRect()
@@ -152,7 +156,7 @@ export function AnnotationLayer({ page, scale }: Props) {
       return
     }
     event.currentTarget.setPointerCapture(event.pointerId)
-    if (MARKUP_TOOLS.has(tool)) {
+    if (TEXT_TOOLS.has(tool)) {
       markup.current.to = p
       setDraft({ kind: 'markup', from: p, quads: [] })
     } else if (tool === 'ink') {
@@ -225,7 +229,7 @@ export function AnnotationLayer({ page, scale }: Props) {
       case 'shape': {
         const [x0, y0] = draft.from
         const [x1, y1] = p
-        if (draft.tool === 'rect' || draft.tool === 'ellipse') {
+        if (draft.tool === 'rect' || draft.tool === 'ellipse' || draft.tool === 'redactArea') {
           if (Math.abs(x1 - x0) >= 2 && Math.abs(y1 - y0) >= 2) {
             ctx.create(page.id, { kind: draft.tool, rect: [x0, y0, x1, y1] })
           }
@@ -238,7 +242,7 @@ export function AnnotationLayer({ page, scale }: Props) {
         if (draft.points.length >= 2) ctx.create(page.id, { kind: 'ink', strokes: [draft.points] })
         break
       case 'markup': {
-        const kind = tool as 'highlight' | 'underline' | 'strikeout'
+        const kind = tool as 'highlight' | 'underline' | 'strikeout' | 'redactText'
         pdf.textQuads(page.id, draft.from, p).then((quads) => {
           if (quads.length) ctx.create(page.id, { kind, quads })
         })
@@ -387,6 +391,10 @@ function ShapePreview({ draft, color, width, opacity }: { draft: Extract<Draft, 
   const [x0, y0] = draft.from
   const [x1, y1] = draft.to
   const common = { fill: 'none', stroke: color, strokeWidth: width, opacity }
+  if (draft.tool === 'redactArea') {
+    const rect = { x: Math.min(x0, x1), y: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) }
+    return <rect {...rect} fill={color} fillOpacity={0.15} stroke={color} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+  }
   if (draft.tool === 'rect') {
     return <rect x={Math.min(x0, x1)} y={Math.min(y0, y1)} width={Math.abs(x1 - x0)} height={Math.abs(y1 - y0)} {...common} />
   }

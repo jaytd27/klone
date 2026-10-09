@@ -18,6 +18,7 @@ import type {
   Quad,
   RenderResult,
   ResultMap,
+  SearchHit,
   WatermarkSpec,
   WorkerReady,
   WorkerRequest,
@@ -164,6 +165,21 @@ export class PdfClient {
   /** Writes a text watermark into the content of the pages at `pages` (indices). */
   watermark(pages: number[], spec: WatermarkSpec): Promise<DocState> {
     return this.send({ type: 'watermark', pages, spec })
+  }
+
+  /** Every occurrence of `query` in the document. */
+  search(query: string, matchCase = false): Promise<SearchHit[]> {
+    return this.send({ type: 'search', query, matchCase })
+  }
+
+  /** Marks every occurrence of `query` for redaction. */
+  markRedactions(query: string, matchCase = false): Promise<{ state: DocState; count: number }> {
+    return this.send({ type: 'markRedactions', query, matchCase })
+  }
+
+  /** Permanently removes the content under all redaction marks. */
+  applyRedactions(): Promise<DocState> {
+    return this.send({ type: 'applyRedactions' })
   }
 
   /** Renders the page with object number `id` at `scale` device pixels per point. */

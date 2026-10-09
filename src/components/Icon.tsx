@@ -28,6 +28,9 @@ const paths = {
   image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01',
   signature: 'M3 16c2-4 3.5-9 5.5-9s-1 9 1.5 9 3-6 4.5-6 .5 5 2.5 5 2-2 3-2M3 20h18',
   watermark: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z',
+  redactText: 'M4 6h16M4 18h9M4 10h16v4H4zM7 12h10',
+  redactArea: 'M4 4h16v16H4zM4 12h16M12 4v16',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm5 12 4 4',
 } as const
 
 export type IconName = keyof typeof paths

@@ -6,6 +6,7 @@ import { AnnotationBar } from './components/AnnotationBar'
 import { Sidebar } from './components/Sidebar'
 import { Toolbar } from './components/Toolbar'
 import { VIEWER_PADDING, Viewer, type ViewerHandle } from './components/Viewer'
+import { ApplyRedactionsDialog, FindRedactDialog, UnappliedRedactionsDialog } from './components/RedactionDialogs'
 import { SignatureDialog } from './components/SignatureDialog'
 import { WatermarkDialog, type WatermarkPages } from './components/WatermarkDialog'
 import { loadImage } from './images'
@@ -77,7 +78,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const insertInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
-  const [dialog, setDialog] = useState<'signature' | 'watermark' | null>(null)
+  const [dialog, setDialog] = useState<'signature' | 'watermark' | 'findRedact' | 'applyRedact' | 'downloadRedact' | null>(null)
   /** Guards against overlapping operations computed from stale page indices. */
   const opRunning = useRef(false)
   /**
@@ -161,13 +162,29 @@ export default function App() {
     [doc, run],
   )
 
+  /** Saves and downloads; `applyRedactionsFirst` applies pending redaction marks in the same step. */
+  const saveFile = useCallback(
+    (applyRedactionsFirst = false) => {
+      if (!doc) return
+      setDialog(null)
+      void run("Couldn't save", async () => {
+        if (applyRedactionsFirst) {
+          applyState(await pdf.applyRedactions())
+          setAnnotSelection(null)
+        }
+        downloadBytes(await pdf.save(), doc.name)
+        setDoc((prev) => (prev ? { ...prev, dirty: false } : prev))
+      })
+    },
+    [doc, run, applyState],
+  )
+
   const download = useCallback(() => {
     if (!doc) return
-    void run("Couldn't save", async () => {
-      downloadBytes(await pdf.save(), doc.name)
-      setDoc((prev) => (prev ? { ...prev, dirty: false } : prev))
-    })
-  }, [doc, run])
+    // Marks alone hide nothing: make sure that's a deliberate choice.
+    if (doc.redactions > 0) setDialog('downloadRedact')
+    else saveFile()
+  }, [doc, saveFile])
 
   const rotate = (degrees: number) =>
     void run("Couldn't rotate", async () => applyState(await pdf.rotate(selectedIndices, degrees)))
@@ -309,6 +326,24 @@ export default function App() {
       applyState(state)
       setTool('select')
       setAnnotSelection({ pageId: page.id, annotId: annot, info: null })
+    })
+  }
+
+  const markRedactions = (query: string, matchCase: boolean) => {
+    setDialog(null)
+    void run("Couldn't mark the matches", async () => {
+      const { state, count } = await pdf.markRedactions(query, matchCase)
+      applyState(state)
+      if (!count) setError(`No matches for “${query}”.`)
+    })
+  }
+
+  const applyRedactions = () => {
+    setDialog(null)
+    void run("Couldn't apply redactions", async () => {
+      applyState(await pdf.applyRedactions())
+      setAnnotSelection(null)
+      setTool('select')
     })
   }
 
@@ -528,6 +563,9 @@ export default function App() {
           onAddImage={() => imageInputRef.current?.click()}
           onAddSignature={() => setDialog('signature')}
           onAddWatermark={() => setDialog('watermark')}
+          redactions={doc.redactions}
+          onFindRedact={() => setDialog('findRedact')}
+          onApplyRedactions={() => setDialog('applyRedact')}
         />
       )}
 
@@ -595,6 +633,18 @@ export default function App() {
       )}
       {dialog === 'watermark' && (
         <WatermarkDialog selectedCount={pickedIds.size} onClose={() => setDialog(null)} onApply={addWatermark} />
+      )}
+      {dialog === 'findRedact' && <FindRedactDialog onClose={() => setDialog(null)} onMark={markRedactions} />}
+      {dialog === 'applyRedact' && doc && (
+        <ApplyRedactionsDialog count={doc.redactions} onClose={() => setDialog(null)} onApply={applyRedactions} />
+      )}
+      {dialog === 'downloadRedact' && doc && (
+        <UnappliedRedactionsDialog
+          count={doc.redactions}
+          onClose={() => setDialog(null)}
+          onApplyAndDownload={() => saveFile(true)}
+          onDownloadAnyway={() => saveFile()}
+        />
       )}
 
       {dragging && (

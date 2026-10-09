@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AnnotSelection } from '../annotations/context'
-import { FONTS, FONT_SIZES, OPACITIES, PALETTE, STROKE_TOOLS, WIDTHS, hexToRgb, rgbToHex, type Tool } from '../annotations/tools'
+import { FONTS, FONT_SIZES, OPACITIES, PALETTE, REDACT_TOOLS, STROKE_TOOLS, WIDTHS, hexToRgb, rgbToHex, type Tool } from '../annotations/tools'
 import type { AnnotPatch, AnnotStyle, TextFont } from '../pdf/protocol'
 import { Icon, type IconName } from './Icon'
 
@@ -18,6 +18,11 @@ const TOOLS: { tool: Tool; icon: IconName; label: string }[] = [
   { tool: 'ink', icon: 'ink', label: 'Freehand' },
 ]
 
+const REDACTION_TOOLS: { tool: Tool; icon: IconName; label: string }[] = [
+  { tool: 'redactText', icon: 'redactText', label: 'Mark text for redaction' },
+  { tool: 'redactArea', icon: 'redactArea', label: 'Mark an area for redaction' },
+]
+
 const TYPE_LABELS: Record<string, string> = {
   Highlight: 'Highlight',
   Underline: 'Underline',
@@ -32,6 +37,7 @@ const TYPE_LABELS: Record<string, string> = {
   Stamp: 'Image',
   Polygon: 'Polygon',
   PolyLine: 'Polyline',
+  Redact: 'Redaction mark',
 }
 
 interface Props {
@@ -49,6 +55,10 @@ interface Props {
   onAddImage(): void
   onAddSignature(): void
   onAddWatermark(): void
+  /** Redaction marks not yet applied. */
+  redactions: number
+  onFindRedact(): void
+  onApplyRedactions(): void
 }
 
 export function AnnotationBar(props: Props) {
@@ -83,6 +93,20 @@ export function AnnotationBar(props: Props) {
   // A text box's contents are its text, edited on the page rather than as a comment.
   const showComment = info && info.type !== 'FreeText'
 
+  const redactionSelected = info?.type === 'Redact'
+  const redactHint =
+    !info && REDACT_TOOLS.has(tool)
+      ? tool === 'redactText'
+        ? 'Drag across text to mark it. Nothing is removed until you apply redactions.'
+        : 'Drag a box over anything, including images, to mark it. Nothing is removed until you apply redactions.'
+      : null
+
+  const toolButton = ({ tool: t, icon, label }: { tool: Tool; icon: IconName; label: string }) => (
+    <button key={t} className="icon-button" aria-pressed={tool === t} title={label} aria-label={label} onClick={() => props.onToolChange(t)}>
+      <Icon name={icon} />
+    </button>
+  )
+
   const change = (patch: Partial<AnnotStyle>) => {
     if (info) props.onUpdateSelected(patch)
     else props.onToolStyleChange(patch)
@@ -91,18 +115,7 @@ export function AnnotationBar(props: Props) {
   return (
     <div className="annot-bar" role="toolbar" aria-label="Annotation tools">
       <div className="annot-bar__tools">
-        {TOOLS.map(({ tool: t, icon, label }) => (
-          <button
-            key={t}
-            className="icon-button"
-            aria-pressed={tool === t}
-            title={label}
-            aria-label={label}
-            onClick={() => props.onToolChange(t)}
-          >
-            <Icon name={icon} />
-          </button>
-        ))}
+        {TOOLS.map(toolButton)}
       </div>
 
       <span className="toolbar__divider" />
@@ -121,7 +134,34 @@ export function AnnotationBar(props: Props) {
 
       <span className="toolbar__divider" />
 
-      {controls ? (
+      <div className="annot-bar__tools" role="group" aria-label="Redaction">
+        {REDACTION_TOOLS.map(toolButton)}
+        <button className="icon-button" title="Find and redact" aria-label="Find and redact" onClick={props.onFindRedact} disabled={busy}>
+          <Icon name="search" />
+        </button>
+        <button
+          className={`button button--compact ${props.redactions ? 'button--danger' : ''}`}
+          onClick={props.onApplyRedactions}
+          disabled={busy || !props.redactions}
+          title="Permanently remove everything under the redaction marks"
+        >
+          Apply{props.redactions ? ` (${props.redactions})` : ''}
+        </button>
+      </div>
+
+      <span className="toolbar__divider" />
+
+      {redactionSelected ? (
+        <div className="annot-bar__style">
+          <span className="annot-bar__label">Redaction mark</span>
+          <span className="annot-bar__hint">Not applied yet</span>
+          <button className="icon-button" onClick={props.onDeleteSelected} disabled={busy} title="Remove this mark (Del)">
+            <Icon name="trash" />
+          </button>
+        </div>
+      ) : redactHint ? (
+        <span className="annot-bar__hint">{redactHint}</span>
+      ) : controls ? (
         <div className="annot-bar__style">
           {info && <span className="annot-bar__label">{TYPE_LABELS[info.type] ?? info.type}</span>}
           {controls.color !== null && (

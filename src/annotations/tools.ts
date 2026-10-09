@@ -1,9 +1,25 @@
 import type { AnnotStyle, RGB, TextFont } from '../pdf/protocol'
 
-export type Tool = 'select' | 'highlight' | 'underline' | 'strikeout' | 'note' | 'text' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'ink'
+export type Tool =
+  | 'select'
+  | 'highlight'
+  | 'underline'
+  | 'strikeout'
+  | 'note'
+  | 'text'
+  | 'rect'
+  | 'ellipse'
+  | 'line'
+  | 'arrow'
+  | 'ink'
+  | 'redactText'
+  | 'redactArea'
 export type DrawingTool = Exclude<Tool, 'select'>
 
 export const MARKUP_TOOLS: ReadonlySet<Tool> = new Set(['highlight', 'underline', 'strikeout'])
+export const REDACT_TOOLS: ReadonlySet<Tool> = new Set(['redactText', 'redactArea'])
+/** Colour used to show redaction marks while drawing them. */
+export const REDACT_COLOR = '#e5383b'
 /** Tools whose annotations have a stroke width. */
 export const STROKE_TOOLS: ReadonlySet<Tool> = new Set(['rect', 'ellipse', 'line', 'arrow', 'ink'])
 
@@ -41,4 +57,7 @@ export const DEFAULT_STYLES: Record<DrawingTool, AnnotStyle> = {
   line: style('#e5383b'),
   arrow: style('#e5383b'),
   ink: style('#2f6fde'),
+  // Redaction marks have no style of their own; these are placeholders.
+  redactText: style(REDACT_COLOR),
+  redactArea: style(REDACT_COLOR),
 }

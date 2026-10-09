@@ -18,6 +18,7 @@ import type {
   RenderResult,
   ImagePayload,
   RGB,
+  SearchHit,
   TextFont,
   WatermarkSpec,
   WorkerReady,
@@ -81,10 +82,15 @@ function journalPosition(): number {
 function state(): DocState {
   const d = requireDoc()
   const pages: PageInfo[] = []
+  let redactions = 0
   idToIndex = new Map()
   for (let i = 0; i < d.countPages(); i++) {
     const page = loadPage(i)
     const obj = page.getObject()
+    // Count redaction marks from the raw /Annots array; cheaper than loading annotations.
+    obj.get('Annots').forEach((annot) => {
+      if (annot.get('Subtype').asName() === 'Redact') redactions++
+    })
     const [x0, y0, x1, y1] = page.getBounds()
     const rotate = obj.getInheritable('Rotate')
     const id = obj.asIndirect()
@@ -102,6 +108,7 @@ function state(): DocState {
     canUndo: journalEnabled && d.canUndo(),
     canRedo: journalEnabled && d.canRedo(),
     dirty: journalPosition() !== savedPosition,
+    redactions,
   }
 }
 
@@ -301,6 +308,8 @@ const ANNOT_TYPES: Record<AnnotSpec['kind'], mupdf.PDFAnnotationType> = {
   ink: 'Ink',
   text: 'FreeText',
   image: 'Stamp',
+  redactText: 'Redact',
+  redactArea: 'Redact',
 }
 
 /** Not listed for editing: popups belong to their parent, links and form fields are separate features. */
@@ -381,7 +390,7 @@ function describeAnnot(annot: mupdf.PDFAnnotation): AnnotInfo {
     info.font = toTextFont(da.font)
     info.fontSize = da.size || DEFAULT_FONT_SIZE
   }
-  if (type === 'Stamp') info.color = null
+  if (type === 'Stamp' || type === 'Redact') info.color = null
   return info
 }
 
@@ -392,13 +401,38 @@ function listAnnots(pageId: number): AnnotInfo[] {
     .map(describeAnnot)
 }
 
-function textQuads(pageId: number, from: Point, to: Point): Quad[] {
+function pageText(pageId: number): mupdf.StructuredText {
   let text = textCache.get(pageId)
   if (!text) {
     text = pageById(pageId).toStructuredText('preserve-whitespace')
     textCache.set(pageId, text)
   }
-  return text.highlight(from, to) as Quad[]
+  return text
+}
+
+function textQuads(pageId: number, from: Point, to: Point): Quad[] {
+  return pageText(pageId).highlight(from, to) as Quad[]
+}
+
+/** MuPDF.js returns at most this many quads per page from one search. */
+const MAX_SEARCH_QUADS = 500
+
+/** Every occurrence of `query` in the document. */
+function search(query: string, matchCase: boolean): SearchHit[] {
+  const needle = query.trim()
+  if (!needle) return []
+  const hits: SearchHit[] = []
+  const d = requireDoc()
+  for (let i = 0; i < d.countPages(); i++) {
+    const id = loadPage(i).getObject().asIndirect()
+    const found = pageText(id).search(needle, matchCase ? null : 'ignore-case') as Quad[][]
+    // Hitting the cap means matches were dropped; for redaction that must not pass silently.
+    if (found.reduce((n, quads) => n + quads.length, 0) >= MAX_SEARCH_QUADS) {
+      throw new Error(`Too many matches on page ${i + 1} to list them all; try a longer search`)
+    }
+    for (const quads of found) hits.push({ page: id, quads })
+  }
+  return hits
 }
 
 function normalizeRect([x0, y0, x1, y1]: mupdf.Rect): mupdf.Rect {
@@ -486,6 +520,12 @@ function createAnnot(pageId: number, spec: AnnotSpec, style: AnnotStyle): { stat
           fitTextBox(annot, spec.text, font, size, spec.at)
           break
         }
+        case 'redactText':
+          annot.setQuadPoints(spec.quads)
+          break
+        case 'redactArea':
+          annot.setRect(normalizeRect(spec.rect))
+          break
         case 'image': {
           const image = buildImage(spec.image)
           try {
@@ -564,6 +604,73 @@ function deleteAnnot(pageId: number, annotId: number): DocState {
     },
     pageId,
   )
+}
+
+// ---------- Redaction ----------
+
+/** Marks every occurrence of `query` for redaction, as one undoable step. */
+function markRedactions(query: string, matchCase: boolean): { state: DocState; count: number } {
+  const hits = search(query, matchCase)
+  if (!hits.length) return { state: state(), count: 0 }
+  const docState = mutate(
+    'Mark for redaction',
+    () => {
+      for (const hit of hits) {
+        const annot = pageById(hit.page).createAnnotation('Redact')
+        annot.setQuadPoints(hit.quads)
+        annot.update()
+      }
+    },
+    'appearance',
+  )
+  return { state: docState, count: hits.length }
+}
+
+function overlaps([a0, a1, a2, a3]: mupdf.Rect, [b0, b1, b2, b3]: mupdf.Rect) {
+  return a0 < b2 && b0 < a2 && a1 < b3 && b1 < a3
+}
+
+/**
+ * Permanently removes everything under each redaction mark: text, the
+ * covered pixels of images, vector graphics that lie entirely inside a mark,
+ * and any annotation or form field that overlaps one; then fills the areas
+ * black. Saving writes a fresh file, so nothing removed survives in it.
+ */
+function applyRedactions(): DocState {
+  return mutate('Apply redactions', (d) => {
+    for (let i = 0; i < d.countPages(); i++) {
+      const page = loadPage(i)
+      const annots = [...page.getAnnotations()]
+      const marks = annots.filter((a) => a.getType() === 'Redact').map((a) => a.getBounds())
+      if (!marks.length) continue
+      const underMark = (a: mupdf.PDFAnnotation) => marks.some((m) => overlaps(m, a.getBounds()))
+
+      // MuPDF's redaction leaves some annotation types (e.g. notes) and form
+      // fields in place, so remove whatever overlaps a mark ourselves.
+      for (const annot of annots) {
+        if (annot.getType() !== 'Redact' && annot.getType() !== 'Popup' && underMark(annot)) page.deleteAnnotation(annot)
+      }
+      for (const widget of [...page.getWidgets()].filter(underMark)) {
+        // Clear the value first: the field dictionary can outlive its widget.
+        if (widget.isText()) widget.setTextValue('')
+        else if (widget.isChoice()) clearChoice(widget)
+        page.deleteAnnotation(widget)
+      }
+
+      page.applyRedactions(
+        true,
+        mupdf.PDFPage.REDACT_IMAGE_PIXELS,
+        mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED,
+        mupdf.PDFPage.REDACT_TEXT_REMOVE,
+      )
+    }
+  })
+}
+
+/** Removes a choice field's value (MuPDF has no direct call for it). */
+function clearChoice(widget: mupdf.PDFWidget) {
+  // The value may sit on the widget or be inherited from a parent field.
+  for (let field = widget.getObject(); !field.isNull(); field = field.get('Parent')) field.delete('V')
 }
 
 // ---------- Watermarks ----------
@@ -775,6 +882,12 @@ function handle(req: WorkerRequest): { result: unknown; transfer?: Transferable[
       return { result: setField(req.page, req.widget, req.change) }
     case 'watermark':
       return { result: addWatermark(req.pages, req.spec) }
+    case 'search':
+      return { result: search(req.query, req.matchCase) }
+    case 'markRedactions':
+      return { result: markRedactions(req.query, req.matchCase) }
+    case 'applyRedactions':
+      return { result: applyRedactions() }
   }
 }
 

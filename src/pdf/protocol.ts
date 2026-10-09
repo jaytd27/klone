@@ -47,6 +47,9 @@ export type AnnotSpec =
   /** A text box with its top-left corner at `at`. */
   | { kind: 'text'; at: Point; text: string }
   | { kind: 'image'; rect: Rect; image: ImagePayload }
+  /** Redaction marks: nothing is removed until redactions are applied. */
+  | { kind: 'redactText'; quads: Quad[] }
+  | { kind: 'redactArea'; rect: Rect }
 
 export interface AnnotInfo {
   /** PDF object number of the annotation. */
@@ -94,6 +97,16 @@ export interface DocState {
   canRedo: boolean
   /** True when there are changes since the file was opened or last saved. */
   dirty: boolean
+  /** Redaction marks not yet applied, across the document. */
+  redactions: number
+}
+
+/** One occurrence of a search term. */
+export interface SearchHit {
+  /** Page id. */
+  page: number
+  /** A hit can span lines, so it may take several quads. */
+  quads: Quad[]
 }
 
 export type FieldKind = 'text' | 'checkbox' | 'radio' | 'combo' | 'list' | 'signature' | 'button'
@@ -142,6 +155,9 @@ export type WorkerRequest =
   | { type: 'listFields'; page: number }
   | { type: 'setField'; page: number; widget: number; change: FieldChange }
   | { type: 'watermark'; pages: number[]; spec: WatermarkSpec }
+  | { type: 'search'; query: string; matchCase: boolean }
+  | { type: 'markRedactions'; query: string; matchCase: boolean }
+  | { type: 'applyRedactions' }
 
 export type OpenResult = { needsPassword: true } | ({ needsPassword: false; title: string | null } & DocState)
 
@@ -172,6 +188,9 @@ export interface ResultMap {
   listFields: FieldInfo[]
   setField: DocState
   watermark: DocState
+  search: SearchHit[]
+  markRedactions: { state: DocState; count: number }
+  applyRedactions: DocState
 }
 
 /** Sent once by the worker when MuPDF has loaded and it can take requests. */
