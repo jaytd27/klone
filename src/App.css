@@ -614,6 +614,34 @@ textarea.form-field--text {
   color: var(--danger-text);
 }
 
+.banner--info {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.modal__intro {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+}
+
+.form-error {
+  margin: 12px 0 0;
+  color: var(--danger-text);
+}
+
+.ocr-progress progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
+}
+
 .banner__close {
   border: none;
   background: none;

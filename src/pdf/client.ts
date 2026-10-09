@@ -17,6 +17,7 @@ import type {
   Point,
   Quad,
   RenderResult,
+  OcrPage,
   ResultMap,
   SearchHit,
   WatermarkSpec,
@@ -180,6 +181,16 @@ export class PdfClient {
   /** Permanently removes the content under all redaction marks. */
   applyRedactions(): Promise<DocState> {
     return this.send({ type: 'applyRedactions' })
+  }
+
+  /** How much text each page already has, to find pages that need OCR. */
+  textStats(): Promise<{ page: number; chars: number }[]> {
+    return this.send({ type: 'textStats' })
+  }
+
+  /** Adds recognized words to pages as an invisible, searchable text layer. */
+  addOcrText(pages: OcrPage[]): Promise<DocState> {
+    return this.send({ type: 'addOcrText', pages })
   }
 
   /** Renders the page with object number `id` at `scale` device pixels per point. */

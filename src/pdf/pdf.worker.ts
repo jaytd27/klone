@@ -11,6 +11,7 @@ import type {
   FieldChange,
   FieldInfo,
   FieldKind,
+  OcrPage,
   OpenResult,
   PageInfo,
   Point,
@@ -673,7 +674,7 @@ function clearChoice(widget: mupdf.PDFWidget) {
   for (let field = widget.getObject(); !field.isNull(); field = field.get('Parent')) field.delete('V')
 }
 
-// ---------- Watermarks ----------
+// ---------- Writing page content (watermarks, OCR text) ----------
 
 /** Returns `base`, or `base` with a number added, that isn't yet a key of `dict`. */
 function unusedKey(dict: mupdf.PDFObject, base: string): string {
@@ -690,6 +691,35 @@ function resourceDict(d: mupdf.PDFDocument, resources: mupdf.PDFObject, name: st
     resources.put(name, dict)
   }
   return dict
+}
+
+/** Adds `value` to the page's `category` resources (Font, ExtGState, ...) and returns its name. */
+function addResource(d: mupdf.PDFDocument, page: mupdf.PDFObject, category: string, base: string, value: mupdf.PDFObject): string {
+  let resources = page.getInheritable('Resources')
+  if (resources.isNull()) {
+    resources = d.newDictionary()
+    page.put('Resources', resources)
+  }
+  const dict = resourceDict(d, resources, category)
+  const key = unusedKey(dict, base)
+  dict.put(key, value)
+  return key
+}
+
+/**
+ * Appends `content` to the page's content stream, drawn after everything
+ * else. The existing content is wrapped in q/Q so graphics state it leaves
+ * behind can't move or restyle what we add.
+ */
+function appendContent(d: mupdf.PDFDocument, page: mupdf.PDFObject, content: string) {
+  const existing = page.get('Contents')
+  const contents = d.newArray()
+  contents.push(d.addStream('q', {}))
+  if (existing.isArray()) existing.forEach((stream) => contents.push(stream))
+  else if (!existing.isNull()) contents.push(existing)
+  contents.push(d.addStream('Q', {}))
+  contents.push(d.addStream(content, {}))
+  page.put('Contents', contents)
 }
 
 /** PDF literal string in WinAnsi (Latin-1) encoding; other characters become '?'. */
@@ -714,17 +744,8 @@ function addWatermark(indices: number[], spec: WatermarkSpec): DocState {
     const width = textWidth('Helv', spec.fontSize, spec.text)
     for (const index of indices) {
       const page = d.findPage(index)
-      let resources = page.getInheritable('Resources')
-      if (resources.isNull()) {
-        resources = d.newDictionary()
-        page.put('Resources', resources)
-      }
-      const fonts = resourceDict(d, resources, 'Font')
-      const states = resourceDict(d, resources, 'ExtGState')
-      const fontKey = unusedKey(fonts, 'KloneWM')
-      const stateKey = unusedKey(states, 'KloneWMGS')
-      fonts.put(fontKey, font)
-      states.put(stateKey, state)
+      const fontKey = addResource(d, page, 'Font', 'KloneWM', font)
+      const stateKey = addResource(d, page, 'ExtGState', 'KloneWMGS', state)
 
       // Centre on the visible area; the page's /Rotate turns the content
       // clockwise for display, so add it to get the angle the reader sees.
@@ -734,21 +755,68 @@ function addWatermark(indices: number[], spec: WatermarkSpec): DocState {
       const radians = ((spec.angle + (rotate.isNumber() ? rotate.asNumber() : 0)) * Math.PI) / 180
       const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
       const [r, g, b] = spec.color
-      const content =
+      appendContent(
+        d,
+        page,
         `q /${stateKey} gs ${num(r)} ${num(g)} ${num(b)} rg BT /${fontKey} ${num(spec.fontSize)} Tf ` +
-        `${num(cos)} ${num(sin)} ${num(-sin)} ${num(cos)} ${num((x0 + x1) / 2)} ${num((y0 + y1) / 2)} Tm ` +
-        `${num(-width / 2)} ${num(-spec.fontSize * 0.35)} Td ${pdfString(spec.text)} Tj ET Q`
+          `${num(cos)} ${num(sin)} ${num(-sin)} ${num(cos)} ${num((x0 + x1) / 2)} ${num((y0 + y1) / 2)} Tm ` +
+          `${num(-width / 2)} ${num(-spec.fontSize * 0.35)} Td ${pdfString(spec.text)} Tj ET Q`,
+      )
+    }
+  })
+}
 
-      // Wrap the existing content in q/Q so state it leaves behind can't
-      // move or recolor the watermark.
-      const existing = page.get('Contents')
-      const contents = d.newArray()
-      contents.push(d.addStream('q', {}))
-      if (existing.isArray()) existing.forEach((stream) => contents.push(stream))
-      else if (!existing.isNull()) contents.push(existing)
-      contents.push(d.addStream('Q', {}))
-      contents.push(d.addStream(content, {}))
-      page.put('Contents', contents)
+// ---------- OCR ----------
+
+/** Helvetica's ascent as a fraction of the font size; tall letters reach about this high. */
+const HELVETICA_ASCENT = 0.72
+
+function textStats(): { page: number; chars: number }[] {
+  const d = requireDoc()
+  const stats = []
+  for (let i = 0; i < d.countPages(); i++) {
+    const id = loadPage(i).getObject().asIndirect()
+    stats.push({ page: id, chars: pageText(id).asText().replace(/\s/g, '').length })
+  }
+  return stats
+}
+
+/**
+ * Writes OCR results as invisible text (render mode 3) over each word, like
+ * a "searchable PDF": the page looks the same, but its text can be searched,
+ * selected, marked up and redacted. Words arrive in display space; the
+ * inverse page transform maps them back into PDF space, which also handles
+ * rotated pages.
+ */
+function addOcrText(pages: OcrPage[]): DocState {
+  return mutate('Recognize text', (d) => {
+    const font = d.addSimpleFont(new mupdf.Font('Helvetica'))
+    for (const { page: pageId, words } of pages) {
+      if (!words.length) continue
+      const page = pageById(pageId)
+      const obj = page.getObject()
+      const fontKey = addResource(d, obj, 'Font', 'KloneOCR', font)
+      const [a, b, c, dd, e, f] = mupdf.Matrix.invert(page.getTransform())
+      const toPdf = (x: number, y: number): Point => [a * x + c * y + e, b * x + dd * y + f]
+      const unit = (x: number, y: number): Point => {
+        const len = Math.hypot(x, y)
+        return [x / len, y / len]
+      }
+      // Display space runs y-down; text space runs y-up.
+      const [rx, ry] = unit(a, b)
+      const [ux, uy] = unit(-c, -dd)
+      let content = `BT 3 Tr`
+      for (const word of words) {
+        const [x0, top, x1] = word.bbox
+        const size = Math.max((word.baseline - top) / HELVETICA_ASCENT, 1)
+        const natural = textWidth('Helv', size, word.text)
+        if (!word.text.trim() || natural <= 0 || x1 <= x0) continue
+        const [ox, oy] = toPdf(x0, word.baseline)
+        content +=
+          ` /${fontKey} ${num(size)} Tf ${num((100 * (x1 - x0)) / natural)} Tz` +
+          ` ${num(rx)} ${num(ry)} ${num(ux)} ${num(uy)} ${num(ox)} ${num(oy)} Tm ${pdfString(word.text)} Tj`
+      }
+      appendContent(d, obj, content + ' ET')
     }
   })
 }
@@ -888,6 +956,10 @@ function handle(req: WorkerRequest): { result: unknown; transfer?: Transferable[
       return { result: markRedactions(req.query, req.matchCase) }
     case 'applyRedactions':
       return { result: applyRedactions() }
+    case 'textStats':
+      return { result: textStats() }
+    case 'addOcrText':
+      return { result: addOcrText(req.pages) }
   }
 }
 

@@ -101,6 +101,21 @@ export interface DocState {
   redactions: number
 }
 
+/** A word found by OCR, in page space (points, as displayed). */
+export interface OcrWord {
+  text: string
+  /** x0 and x1 bound the word; y0 is the top of its line, y1 the bottom. */
+  bbox: Rect
+  /** Where the line's baseline crosses this word. */
+  baseline: number
+}
+
+export interface OcrPage {
+  /** Page id. */
+  page: number
+  words: OcrWord[]
+}
+
 /** One occurrence of a search term. */
 export interface SearchHit {
   /** Page id. */
@@ -158,6 +173,8 @@ export type WorkerRequest =
   | { type: 'search'; query: string; matchCase: boolean }
   | { type: 'markRedactions'; query: string; matchCase: boolean }
   | { type: 'applyRedactions' }
+  | { type: 'textStats' }
+  | { type: 'addOcrText'; pages: OcrPage[] }
 
 export type OpenResult = { needsPassword: true } | ({ needsPassword: false; title: string | null } & DocState)
 
@@ -191,6 +208,9 @@ export interface ResultMap {
   search: SearchHit[]
   markRedactions: { state: DocState; count: number }
   applyRedactions: DocState
+  /** Number of text characters on each page, by page id. */
+  textStats: { page: number; chars: number }[]
+  addOcrText: DocState
 }
 
 /** Sent once by the worker when MuPDF has loaded and it can take requests. */

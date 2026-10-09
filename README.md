@@ -13,7 +13,7 @@ An open-source, in-browser PDF editor built on [MuPDF.js](https://mupdf.readthed
 - [x] Form filling (AcroForm): text, multiline, checkboxes, radio buttons, dropdowns and list boxes, with Tab navigation and undo
 - [x] Add content: text boxes (font, size, color), images (PNG, JPEG, WebP, GIF with transparency), drawn or typed signatures (saved for reuse), and text watermarks; resize handles for shapes and images
 - [x] True redaction: mark text or areas (or find & mark every match), then permanently remove the text, image pixels, graphics, annotations and form values underneath; downloading warns about unapplied marks
-- [ ] OCR for scanned documents (Tesseract.js)
+- [x] OCR for scanned documents (Tesseract.js, in the browser): adds an invisible text layer so scans can be searched, selected, highlighted and redacted; 7 languages; skips pages that already have text
 - [ ] In-place editing of existing text
 
 ## Development

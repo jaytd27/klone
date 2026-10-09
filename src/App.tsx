@@ -6,6 +6,7 @@ import { AnnotationBar } from './components/AnnotationBar'
 import { Sidebar } from './components/Sidebar'
 import { Toolbar } from './components/Toolbar'
 import { VIEWER_PADDING, Viewer, type ViewerHandle } from './components/Viewer'
+import { OcrDialog } from './components/OcrDialog'
 import { ApplyRedactionsDialog, FindRedactDialog, UnappliedRedactionsDialog } from './components/RedactionDialogs'
 import { SignatureDialog } from './components/SignatureDialog'
 import { WatermarkDialog, type WatermarkPages } from './components/WatermarkDialog'
@@ -62,6 +63,8 @@ export default function App() {
   const [doc, setDoc] = useState<OpenDocument | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** An informational message, optionally with an action button. */
+  const [notice, setNotice] = useState<{ text: string; action?: { label: string; run(): void } } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 720)
   const [currentPage, setCurrentPage] = useState(0)
@@ -78,7 +81,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const insertInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
-  const [dialog, setDialog] = useState<'signature' | 'watermark' | 'findRedact' | 'applyRedact' | 'downloadRedact' | null>(null)
+  const [dialog, setDialog] = useState<'signature' | 'watermark' | 'findRedact' | 'applyRedact' | 'downloadRedact' | 'ocr' | null>(null)
   /** Guards against overlapping operations computed from stale page indices. */
   const opRunning = useRef(false)
   /**
@@ -157,6 +160,15 @@ export default function App() {
         setAnnotSelection(null)
         setCurrentPage(0)
         document.title = `${file.name} – Klone`
+        setNotice(null)
+        // A document with no text at all is almost certainly a scan.
+        const stats = await pdf.textStats()
+        if (stats.length && stats.every((s) => s.chars === 0)) {
+          setNotice({
+            text: 'This PDF looks like a scan, so its text can’t be searched or selected yet.',
+            action: { label: 'Recognize text', run: () => setDialog('ocr') },
+          })
+        }
       })
     },
     [doc, run],
@@ -534,6 +546,7 @@ export default function App() {
         onUndo={() => history('undo')}
         onRedo={() => history('redo')}
         onDownload={download}
+        onOcr={() => setDialog('ocr')}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
         onGoToPage={goToPage}
         onZoomIn={() => zoomStep(1)}
@@ -569,6 +582,27 @@ export default function App() {
         />
       )}
 
+      {notice && !error && (
+        <div className="banner banner--info" role="status">
+          <span>{notice.text}</span>
+          <span className="banner__actions">
+            {notice.action && (
+              <button
+                className="button button--compact"
+                onClick={() => {
+                  notice.action!.run()
+                  setNotice(null)
+                }}
+              >
+                {notice.action.label}
+              </button>
+            )}
+            <button className="banner__close" onClick={() => setNotice(null)} aria-label="Dismiss">
+              ×
+            </button>
+          </span>
+        </div>
+      )}
       {error && (
         <div className="banner" role="alert">
           <span>{error}</span>
@@ -633,6 +667,33 @@ export default function App() {
       )}
       {dialog === 'watermark' && (
         <WatermarkDialog selectedCount={pickedIds.size} onClose={() => setDialog(null)} onApply={addWatermark} />
+      )}
+      {dialog === 'ocr' && (
+        <OcrDialog
+          pages={pages}
+          currentPage={currentPage}
+          onClose={() => setDialog(null)}
+          onDone={(results) => {
+            setDialog(null)
+            void run("Couldn't add the recognized text", async () => {
+              const found = results.filter((r) => r.words.length)
+              if (found.length) applyState(await pdf.addOcrText(found))
+              const words = found.reduce((n, r) => n + r.words.length, 0)
+              const pagesWord = (n: number) => (n === 1 ? '1 page' : `${n} pages`)
+              const empty = results
+                .filter((r) => !r.words.length)
+                .map((r) => pages.findIndex((p) => p.id === r.page) + 1)
+              const emptyNote = empty.length
+                ? ` Nothing readable on page${empty.length === 1 ? '' : 's'} ${empty.join(', ')}; if a page is sideways, rotate it and run OCR again.`
+                : ''
+              setNotice({
+                text: words
+                  ? `Recognized ${words} words on ${pagesWord(found.length)}. The text is now searchable.${emptyNote}`
+                  : `No text was found.${emptyNote}`,
+              })
+            })
+          }}
+        />
       )}
       {dialog === 'findRedact' && <FindRedactDialog onClose={() => setDialog(null)} onMark={markRedactions} />}
       {dialog === 'applyRedact' && doc && (

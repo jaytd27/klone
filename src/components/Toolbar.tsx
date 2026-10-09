@@ -16,6 +16,7 @@ interface Props {
   onUndo(): void
   onRedo(): void
   onDownload(): void
+  onOcr(): void
   onToggleSidebar(): void
   onGoToPage(index: number): void
   onZoomIn(): void
@@ -85,6 +86,12 @@ export function Toolbar(props: Props) {
       )}
 
       <div className="toolbar__group toolbar__group--end">
+        {hasDoc && (
+          <button className="button" onClick={props.onOcr} disabled={props.busy} title="Recognize text in scanned pages (OCR)">
+            <Icon name="scan" />
+            <span className="button__label">OCR</span>
+          </button>
+        )}
         {hasDoc && (
           <button className="button button--primary" onClick={props.onDownload} disabled={props.busy} title="Download (Ctrl+S)">
             <Icon name="download" /><span className="button__label">Download</span>
