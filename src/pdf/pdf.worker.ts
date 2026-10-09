@@ -16,7 +16,10 @@ import type {
   Point,
   Quad,
   RenderResult,
+  ImagePayload,
   RGB,
+  TextFont,
+  WatermarkSpec,
   WorkerReady,
   WorkerRequest,
   WorkerResponse,
@@ -296,10 +299,41 @@ const ANNOT_TYPES: Record<AnnotSpec['kind'], mupdf.PDFAnnotationType> = {
   line: 'Line',
   arrow: 'Line',
   ink: 'Ink',
+  text: 'FreeText',
+  image: 'Stamp',
 }
 
 /** Not listed for editing: popups belong to their parent, links and form fields are separate features. */
 const HIDDEN_TYPES = new Set<string>(['Popup', 'Link', 'Widget'])
+
+const TEXT_FONTS: Record<TextFont, string> = { Helv: 'Helvetica', TiRo: 'Times-Roman', Cour: 'Courier' }
+const DEFAULT_FONT_SIZE = 14
+/** Padding MuPDF leaves around text inside a text box, in points. */
+const TEXT_PADDING = 4
+const metricFonts = new Map<string, mupdf.Font>()
+
+function toTextFont(name: string): TextFont {
+  return name in TEXT_FONTS ? (name as TextFont) : 'Helv'
+}
+
+/** Width of `text` in points, using the font's glyph metrics. */
+function textWidth(font: TextFont, size: number, text: string): number {
+  let metrics = metricFonts.get(font)
+  if (!metrics) {
+    metrics = new mupdf.Font(TEXT_FONTS[font])
+    metricFonts.set(font, metrics)
+  }
+  let width = 0
+  for (const ch of text) width += metrics.advanceGlyph(metrics.encodeCharacter(ch))
+  return width * size
+}
+
+/** Sizes a text box to fit its text, keeping its top-left corner at `origin`. */
+function fitTextBox(annot: mupdf.PDFAnnotation, text: string, font: TextFont, size: number, [x, y]: Point) {
+  const lines = text.split('\n')
+  const width = Math.max(...lines.map((line) => textWidth(font, size, line)), size)
+  annot.setRect([x, y, x + width + TEXT_PADDING * 2, y + lines.length * size * 1.2 + TEXT_PADDING * 2])
+}
 
 function toRGB(color: mupdf.AnnotColor): RGB | null {
   switch (color.length) {
@@ -328,15 +362,27 @@ function findAnnot(page: mupdf.PDFPage, id: number): mupdf.PDFAnnotation {
 
 function describeAnnot(annot: mupdf.PDFAnnotation): AnnotInfo {
   const type = annot.getType()
-  return {
+  const info: AnnotInfo = {
     id: annot.getObject().asIndirect(),
     type,
     bounds: annot.getBounds(),
+    rect: annot.hasRect() ? annot.getRect() : null,
     color: toRGB(annot.getColor()),
     opacity: annot.getOpacity(),
-    width: annot.hasBorder() && type !== 'Text' ? annot.getBorderWidth() : null,
+    width: annot.hasBorder() && type !== 'Text' && type !== 'FreeText' ? annot.getBorderWidth() : null,
     contents: annot.getContents(),
+    font: null,
+    fontSize: null,
   }
+  if (type === 'FreeText') {
+    // A text box's text color lives in its default appearance, not /C.
+    const da = annot.getDefaultAppearance()
+    info.color = toRGB(da.color) ?? [0, 0, 0]
+    info.font = toTextFont(da.font)
+    info.fontSize = da.size || DEFAULT_FONT_SIZE
+  }
+  if (type === 'Stamp') info.color = null
+  return info
 }
 
 function listAnnots(pageId: number): AnnotInfo[] {
@@ -359,33 +405,67 @@ function normalizeRect([x0, y0, x1, y1]: mupdf.Rect): mupdf.Rect {
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]
 }
 
+/** Builds an image, keeping transparency as a separate soft mask. */
+function buildImage(payload: ImagePayload): mupdf.Image {
+  if ('jpeg' in payload) return new mupdf.Image(payload.jpeg)
+  const { width, height } = payload
+  const rgba = new Uint8ClampedArray(payload.rgba)
+  const bbox: mupdf.Rect = [0, 0, width, height]
+  const color = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, bbox, false)
+  const alpha = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, bbox, false)
+  const colorPixels = color.getPixels()
+  const alphaPixels = alpha.getPixels()
+  const colorStride = color.getStride()
+  const alphaStride = alpha.getStride()
+  let opaque = true
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const src = (y * width + x) * 4
+      const dst = y * colorStride + x * 3
+      colorPixels[dst] = rgba[src]
+      colorPixels[dst + 1] = rgba[src + 1]
+      colorPixels[dst + 2] = rgba[src + 2]
+      alphaPixels[y * alphaStride + x] = rgba[src + 3]
+      if (rgba[src + 3] !== 255) opaque = false
+    }
+  }
+  if (opaque) {
+    alpha.destroy()
+    return new mupdf.Image(color)
+  }
+  return new mupdf.Image(color, new mupdf.Image(alpha))
+}
+
 function createAnnot(pageId: number, spec: AnnotSpec, style: AnnotStyle): { state: DocState; annot: number } {
   let created = 0
   const state = mutate(
     'Add annotation',
     () => {
       const annot = pageById(pageId).createAnnotation(ANNOT_TYPES[spec.kind])
-      annot.setColor(style.color)
       annot.setOpacity(style.opacity)
       switch (spec.kind) {
         case 'highlight':
         case 'underline':
         case 'strikeout':
+          annot.setColor(style.color)
           annot.setQuadPoints(spec.quads)
           break
         case 'note': {
           const [x, y] = spec.at
+          annot.setColor(style.color)
           annot.setRect([x - 10, y - 10, x + 10, y + 10])
           annot.setIcon('Comment')
           break
         }
         case 'rect':
         case 'ellipse':
+          annot.setColor(style.color)
           annot.setRect(normalizeRect(spec.rect))
           annot.setBorderWidth(style.width)
           break
         case 'line':
         case 'arrow':
+          annot.setColor(style.color)
           annot.setLine(spec.from, spec.to)
           annot.setBorderWidth(style.width)
           if (spec.kind === 'arrow') {
@@ -394,9 +474,29 @@ function createAnnot(pageId: number, spec: AnnotSpec, style: AnnotStyle): { stat
           }
           break
         case 'ink':
+          annot.setColor(style.color)
           annot.setInkList(spec.strokes)
           annot.setBorderWidth(style.width)
           break
+        case 'text': {
+          const font = style.font ?? 'Helv'
+          const size = style.fontSize ?? DEFAULT_FONT_SIZE
+          annot.setDefaultAppearance(font, size, style.color)
+          annot.setContents(spec.text)
+          fitTextBox(annot, spec.text, font, size, spec.at)
+          break
+        }
+        case 'image': {
+          const image = buildImage(spec.image)
+          try {
+            annot.setRect(normalizeRect(spec.rect))
+            annot.setIntent('StampImage')
+            annot.setStampImage(image)
+          } finally {
+            image.destroy()
+          }
+          break
+        }
       }
       annot.update()
       created = annot.getObject().asIndirect()
@@ -428,14 +528,27 @@ function updateAnnot(pageId: number, annotId: number, patch: AnnotPatch): DocSta
     'Edit annotation',
     () => {
       const annot = findAnnot(pageById(pageId), annotId)
-      if (patch.color) {
-        annot.setColor(patch.color)
-        if (annot.hasLine() && annot.getLineEndingStyles().end !== 'None') annot.setInteriorColor(patch.color)
+      if (annot.getType() === 'FreeText') {
+        const da = annot.getDefaultAppearance()
+        const font = patch.font ?? toTextFont(da.font)
+        const size = patch.fontSize ?? (da.size || DEFAULT_FONT_SIZE)
+        if (patch.color || patch.font || patch.fontSize) annot.setDefaultAppearance(font, size, patch.color ?? da.color)
+        if (patch.contents !== undefined) annot.setContents(patch.contents)
+        if (patch.contents !== undefined || patch.font || patch.fontSize) {
+          const [x, y] = annot.getRect()
+          fitTextBox(annot, annot.getContents(), font, size, [x, y])
+        }
+      } else {
+        if (patch.color) {
+          annot.setColor(patch.color)
+          if (annot.hasLine() && annot.getLineEndingStyles().end !== 'None') annot.setInteriorColor(patch.color)
+        }
+        if (patch.contents !== undefined) annot.setContents(patch.contents)
       }
       if (patch.opacity !== undefined) annot.setOpacity(patch.opacity)
       if (patch.width !== undefined && annot.hasBorder()) annot.setBorderWidth(patch.width)
-      if (patch.contents !== undefined) annot.setContents(patch.contents)
       if (patch.offset) moveAnnot(annot, patch.offset)
+      if (patch.rect && annot.hasRect()) annot.setRect(normalizeRect(patch.rect))
       annot.update()
     },
     pageId,
@@ -451,6 +564,86 @@ function deleteAnnot(pageId: number, annotId: number): DocState {
     },
     pageId,
   )
+}
+
+// ---------- Watermarks ----------
+
+/** Returns `base`, or `base` with a number added, that isn't yet a key of `dict`. */
+function unusedKey(dict: mupdf.PDFObject, base: string): string {
+  let key = base
+  for (let n = 2; !dict.get(key).isNull(); n++) key = `${base}${n}`
+  return key
+}
+
+/** Gets (creating if needed) the sub-dictionary `name` of a resources dictionary. */
+function resourceDict(d: mupdf.PDFDocument, resources: mupdf.PDFObject, name: string): mupdf.PDFObject {
+  let dict = resources.get(name)
+  if (dict.isNull()) {
+    dict = d.newDictionary()
+    resources.put(name, dict)
+  }
+  return dict
+}
+
+/** PDF literal string in WinAnsi (Latin-1) encoding; other characters become '?'. */
+function pdfString(text: string): string {
+  let out = '('
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!
+    if (ch === '\\' || ch === '(' || ch === ')') out += '\\' + ch
+    else if (code >= 32 && code < 256) out += code < 127 ? ch : '\\' + code.toString(8).padStart(3, '0')
+    else out += '?'
+  }
+  return out + ')'
+}
+
+const num = (n: number) => (Math.abs(n) < 1e-6 ? '0' : n.toFixed(4).replace(/\.?0+$/, ''))
+
+/** Writes `spec` into the content of each page, centred and on top of everything else. */
+function addWatermark(indices: number[], spec: WatermarkSpec): DocState {
+  return mutate('Add watermark', (d) => {
+    const font = d.addSimpleFont(new mupdf.Font('Helvetica'))
+    const state = d.addObject({ Type: 'ExtGState', ca: spec.opacity, CA: spec.opacity })
+    const width = textWidth('Helv', spec.fontSize, spec.text)
+    for (const index of indices) {
+      const page = d.findPage(index)
+      let resources = page.getInheritable('Resources')
+      if (resources.isNull()) {
+        resources = d.newDictionary()
+        page.put('Resources', resources)
+      }
+      const fonts = resourceDict(d, resources, 'Font')
+      const states = resourceDict(d, resources, 'ExtGState')
+      const fontKey = unusedKey(fonts, 'KloneWM')
+      const stateKey = unusedKey(states, 'KloneWMGS')
+      fonts.put(fontKey, font)
+      states.put(stateKey, state)
+
+      // Centre on the visible area; the page's /Rotate turns the content
+      // clockwise for display, so add it to get the angle the reader sees.
+      const box = page.getInheritable('CropBox').isNull() ? page.getInheritable('MediaBox') : page.getInheritable('CropBox')
+      const [x0, y0, x1, y1] = [0, 1, 2, 3].map((i) => box.get(i).asNumber())
+      const rotate = page.getInheritable('Rotate')
+      const radians = ((spec.angle + (rotate.isNumber() ? rotate.asNumber() : 0)) * Math.PI) / 180
+      const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
+      const [r, g, b] = spec.color
+      const content =
+        `q /${stateKey} gs ${num(r)} ${num(g)} ${num(b)} rg BT /${fontKey} ${num(spec.fontSize)} Tf ` +
+        `${num(cos)} ${num(sin)} ${num(-sin)} ${num(cos)} ${num((x0 + x1) / 2)} ${num((y0 + y1) / 2)} Tm ` +
+        `${num(-width / 2)} ${num(-spec.fontSize * 0.35)} Td ${pdfString(spec.text)} Tj ET Q`
+
+      // Wrap the existing content in q/Q so state it leaves behind can't
+      // move or recolor the watermark.
+      const existing = page.get('Contents')
+      const contents = d.newArray()
+      contents.push(d.addStream('q', {}))
+      if (existing.isArray()) existing.forEach((stream) => contents.push(stream))
+      else if (!existing.isNull()) contents.push(existing)
+      contents.push(d.addStream('Q', {}))
+      contents.push(d.addStream(content, {}))
+      page.put('Contents', contents)
+    }
+  })
 }
 
 // ---------- Form fields ----------
@@ -580,6 +773,8 @@ function handle(req: WorkerRequest): { result: unknown; transfer?: Transferable[
       return { result: listFields(req.page) }
     case 'setField':
       return { result: setField(req.page, req.widget, req.change) }
+    case 'watermark':
+      return { result: addWatermark(req.pages, req.spec) }
   }
 }
 

@@ -18,6 +18,7 @@ import type {
   Quad,
   RenderResult,
   ResultMap,
+  WatermarkSpec,
   WorkerReady,
   WorkerRequest,
   WorkerResponse,
@@ -141,7 +142,7 @@ export class PdfClient {
   }
 
   createAnnot(page: number, spec: AnnotSpec, style: AnnotStyle): Promise<{ state: DocState; annot: number }> {
-    return this.send({ type: 'createAnnot', page, spec, style })
+    return this.send({ type: 'createAnnot', page, spec, style }, spec.kind === 'image' ? ['jpeg' in spec.image ? spec.image.jpeg : spec.image.rgba] : [])
   }
 
   updateAnnot(page: number, annot: number, patch: AnnotPatch): Promise<DocState> {
@@ -158,6 +159,11 @@ export class PdfClient {
 
   setField(page: number, widget: number, change: FieldChange): Promise<DocState> {
     return this.send({ type: 'setField', page, widget, change })
+  }
+
+  /** Writes a text watermark into the content of the pages at `pages` (indices). */
+  watermark(pages: number[], spec: WatermarkSpec): Promise<DocState> {
+    return this.send({ type: 'watermark', pages, spec })
   }
 
   /** Renders the page with object number `id` at `scale` device pixels per point. */

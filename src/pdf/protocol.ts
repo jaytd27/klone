@@ -19,12 +19,24 @@ export interface PageInfo {
   rev: number
 }
 
+/** The standard PDF fonts text boxes can use: sans, serif and monospace. */
+export type TextFont = 'Helv' | 'TiRo' | 'Cour'
+
 export interface AnnotStyle {
   color: RGB
   opacity: number
   /** Stroke width in points; ignored by text markup and notes. */
   width: number
+  /** Text boxes only. */
+  font?: TextFont
+  fontSize?: number
 }
+
+/**
+ * Image data for the worker: JPEGs pass through as-is (they can't be
+ * transparent); anything else arrives decoded so its alpha channel survives.
+ */
+export type ImagePayload = { jpeg: ArrayBuffer } | { rgba: ArrayBuffer; width: number; height: number }
 
 export type AnnotSpec =
   | { kind: 'highlight' | 'underline' | 'strikeout'; quads: Quad[] }
@@ -32,26 +44,48 @@ export type AnnotSpec =
   | { kind: 'rect' | 'ellipse'; rect: Rect }
   | { kind: 'line' | 'arrow'; from: Point; to: Point }
   | { kind: 'ink'; strokes: Point[][] }
+  /** A text box with its top-left corner at `at`. */
+  | { kind: 'text'; at: Point; text: string }
+  | { kind: 'image'; rect: Rect; image: ImagePayload }
 
 export interface AnnotInfo {
   /** PDF object number of the annotation. */
   id: number
   type: string
   bounds: Rect
+  /** The annotation's Rect, for types that have one (used for resizing). */
+  rect: Rect | null
   color: RGB | null
   opacity: number
   /** Null when the annotation has no stroke width to change. */
   width: number | null
   contents: string
+  /** Text boxes only. */
+  font: TextFont | null
+  fontSize: number | null
 }
 
 export interface AnnotPatch {
   color?: RGB
   opacity?: number
   width?: number
+  /** For text boxes this is the text itself; the box is resized to fit. */
   contents?: string
+  font?: TextFont
+  fontSize?: number
   /** Moves the annotation by this many points. */
   offset?: Point
+  /** Resizes the annotation to this Rect. */
+  rect?: Rect
+}
+
+export interface WatermarkSpec {
+  text: string
+  fontSize: number
+  color: RGB
+  opacity: number
+  /** Counter-clockwise, in degrees, as the page is displayed. */
+  angle: number
 }
 
 export interface DocState {
@@ -107,6 +141,7 @@ export type WorkerRequest =
   | { type: 'deleteAnnot'; page: number; annot: number }
   | { type: 'listFields'; page: number }
   | { type: 'setField'; page: number; widget: number; change: FieldChange }
+  | { type: 'watermark'; pages: number[]; spec: WatermarkSpec }
 
 export type OpenResult = { needsPassword: true } | ({ needsPassword: false; title: string | null } & DocState)
 
@@ -136,6 +171,7 @@ export interface ResultMap {
   deleteAnnot: DocState
   listFields: FieldInfo[]
   setField: DocState
+  watermark: DocState
 }
 
 /** Sent once by the worker when MuPDF has loaded and it can take requests. */

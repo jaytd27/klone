@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { AnnotInfo, AnnotSpec, AnnotStyle, FieldChange, Point } from '../pdf/protocol'
+import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, FieldChange } from '../pdf/protocol'
 import type { Tool } from './tools'
 
 export interface AnnotSelection {
@@ -19,7 +19,8 @@ export interface AnnotationController {
   /** Called by a page layer whenever its annotation list is (re)loaded. */
   syncAnnotations(pageId: number, annots: AnnotInfo[]): void
   create(pageId: number, spec: AnnotSpec): void
-  moveSelected(offset: Point): void
+  /** Moves, resizes or edits the selected annotation. */
+  updateSelected(patch: AnnotPatch): void
   fillField(pageId: number, widgetId: number, change: FieldChange): void
 }
 

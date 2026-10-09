@@ -24,6 +24,10 @@ const paths = {
   line: 'M5 19 19 5',
   arrow: 'M5 19 19 5M10 5h9v9',
   ink: 'M3 17c2.5-5 4.5-7 6-4s2 6 4.5 1 3.5-7 7.5-6',
+  textBox: 'M5 6V4h14v2M12 4v16M9 20h6',
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 2-2 5 5M15.5 9.5h.01',
+  signature: 'M3 16c2-4 3.5-9 5.5-9s-1 9 1.5 9 3-6 4.5-6 .5 5 2.5 5 2-2 3-2M3 20h18',
+  watermark: 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z',
 } as const
 
 export type IconName = keyof typeof paths

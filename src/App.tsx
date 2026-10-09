@@ -6,8 +6,11 @@ import { AnnotationBar } from './components/AnnotationBar'
 import { Sidebar } from './components/Sidebar'
 import { Toolbar } from './components/Toolbar'
 import { VIEWER_PADDING, Viewer, type ViewerHandle } from './components/Viewer'
+import { SignatureDialog } from './components/SignatureDialog'
+import { WatermarkDialog, type WatermarkPages } from './components/WatermarkDialog'
+import { loadImage } from './images'
 import { pdf } from './pdf/client'
-import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, FieldChange, OpenResult, Point } from './pdf/protocol'
+import type { AnnotInfo, AnnotPatch, AnnotSpec, AnnotStyle, DocState, FieldChange, OpenResult, Rect, WatermarkSpec } from './pdf/protocol'
 import { MAX_SCALE, MIN_SCALE, ZOOM_PRESETS, clampScale } from './zoom'
 
 interface OpenDocument extends DocState {
@@ -73,6 +76,8 @@ export default function App() {
   const viewerRef = useRef<ViewerHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const insertInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const [dialog, setDialog] = useState<'signature' | 'watermark' | null>(null)
   /** Guards against overlapping operations computed from stale page indices. */
   const opRunning = useRef(false)
   /**
@@ -284,6 +289,35 @@ export default function App() {
     [annotSelection, run, applyState],
   )
 
+  /**
+   * Places an image in the middle of the current page, scaled to fit within
+   * `maxWidth` points (default: half the page) at most at its natural size.
+   */
+  const placeImage = (blob: Blob, what: string, maxWidth?: number) => {
+    const page = pages[currentPage]
+    if (!page) return
+    void run(`Couldn't add the ${what}`, async () => {
+      const { payload, width, height } = await loadImage(blob)
+      // Treat pixels as 1/96 inch, like a browser does, so images keep their usual size.
+      const natural = Math.min(1, (maxWidth ?? page.width * 0.5) / (width * 0.75), (page.height * 0.5) / (height * 0.75))
+      const w = width * 0.75 * natural
+      const h = height * 0.75 * natural
+      const x = (page.width - w) / 2
+      const y = (page.height - h) / 2
+      const rect: Rect = [x, y, x + w, y + h]
+      const { state, annot } = await pdf.createAnnot(page.id, { kind: 'image', rect, image: payload }, { color: [0, 0, 0], opacity: 1, width: 0 })
+      applyState(state)
+      setTool('select')
+      setAnnotSelection({ pageId: page.id, annotId: annot, info: null })
+    })
+  }
+
+  const addWatermark = (spec: WatermarkSpec, which: WatermarkPages) => {
+    setDialog(null)
+    const indices = which === 'all' ? pages.map((_, i) => i) : which === 'current' ? [currentPage] : selectedIndices
+    void run("Couldn't add the watermark", async () => applyState(await pdf.watermark(indices, spec)))
+  }
+
   const deleteSelectedAnnot = useCallback(() => {
     const sel = annotSelection
     if (!sel) return
@@ -319,7 +353,7 @@ export default function App() {
       select: selectAnnot,
       syncAnnotations,
       create: createAnnot,
-      moveSelected: (offset: Point) => updateSelectedAnnot({ offset }),
+      updateSelected: updateSelectedAnnot,
       fillField,
     }),
     [tool, toolStyle, busy, annotSelection, selectAnnot, syncAnnotations, createAnnot, updateSelectedAnnot, fillField],
@@ -428,6 +462,17 @@ export default function App() {
         }}
       />
       <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) placeImage(file, 'image')
+          e.target.value = ''
+        }}
+      />
+      <input
         ref={insertInputRef}
         type="file"
         accept="application/pdf,.pdf"
@@ -473,12 +518,16 @@ export default function App() {
           onUpdateSelected={(patch) => {
             updateSelectedAnnot(patch)
             // Restyling what you just drew also sets the style for the next one.
-            const { color, width, opacity } = patch
-            if (color || width !== undefined || opacity !== undefined) {
-              changeToolStyle(Object.fromEntries(Object.entries({ color, width, opacity }).filter(([, v]) => v !== undefined)))
+            const { color, width, opacity, font, fontSize } = patch
+            const style = Object.fromEntries(Object.entries({ color, width, opacity, font, fontSize }).filter(([, v]) => v !== undefined))
+            if (Object.keys(style).length) {
+              changeToolStyle(style)
             }
           }}
           onDeleteSelected={deleteSelectedAnnot}
+          onAddImage={() => imageInputRef.current?.click()}
+          onAddSignature={() => setDialog('signature')}
+          onAddWatermark={() => setDialog('watermark')}
         />
       )}
 
@@ -534,6 +583,19 @@ export default function App() {
           )}
         </main>
       </AnnotationContext.Provider>
+
+      {dialog === 'signature' && (
+        <SignatureDialog
+          onClose={() => setDialog(null)}
+          onUse={(blob) => {
+            setDialog(null)
+            placeImage(blob, 'signature', 180)
+          }}
+        />
+      )}
+      {dialog === 'watermark' && (
+        <WatermarkDialog selectedCount={pickedIds.size} onClose={() => setDialog(null)} onApply={addWatermark} />
+      )}
 
       {dragging && (
         <div className="drop-overlay">

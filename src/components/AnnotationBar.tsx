@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { AnnotSelection } from '../annotations/context'
-import { OPACITIES, PALETTE, STROKE_TOOLS, WIDTHS, hexToRgb, rgbToHex, type Tool } from '../annotations/tools'
-import type { AnnotPatch, AnnotStyle } from '../pdf/protocol'
+import { FONTS, FONT_SIZES, OPACITIES, PALETTE, STROKE_TOOLS, WIDTHS, hexToRgb, rgbToHex, type Tool } from '../annotations/tools'
+import type { AnnotPatch, AnnotStyle, TextFont } from '../pdf/protocol'
 import { Icon, type IconName } from './Icon'
 
 const TOOLS: { tool: Tool; icon: IconName; label: string }[] = [
@@ -10,6 +10,7 @@ const TOOLS: { tool: Tool; icon: IconName; label: string }[] = [
   { tool: 'underline', icon: 'underline', label: 'Underline text' },
   { tool: 'strikeout', icon: 'strikeout', label: 'Strike out text' },
   { tool: 'note', icon: 'note', label: 'Sticky note' },
+  { tool: 'text', icon: 'textBox', label: 'Text box' },
   { tool: 'rect', icon: 'rect', label: 'Rectangle' },
   { tool: 'ellipse', icon: 'ellipse', label: 'Ellipse' },
   { tool: 'line', icon: 'line', label: 'Line' },
@@ -28,7 +29,7 @@ const TYPE_LABELS: Record<string, string> = {
   Line: 'Line',
   Ink: 'Freehand drawing',
   FreeText: 'Text box',
-  Stamp: 'Stamp',
+  Stamp: 'Image',
   Polygon: 'Polygon',
   PolyLine: 'Polyline',
 }
@@ -45,6 +46,9 @@ interface Props {
   onToolStyleChange(patch: Partial<AnnotStyle>): void
   onUpdateSelected(patch: AnnotPatch): void
   onDeleteSelected(): void
+  onAddImage(): void
+  onAddSignature(): void
+  onAddWatermark(): void
 }
 
 export function AnnotationBar(props: Props) {
@@ -52,16 +56,32 @@ export function AnnotationBar(props: Props) {
   const info = selection?.info ?? null
 
   // Controls edit the selected annotation if there is one, else the tool's defaults.
-  let controls: { color: string | null; width: number | null; opacity: number } | null = null
+  let controls: {
+    color: string | null
+    width: number | null
+    opacity: number
+    font: TextFont | null
+    fontSize: number | null
+  } | null = null
   if (info) {
-    controls = { color: info.color ? rgbToHex(info.color) : null, width: info.width, opacity: info.opacity }
+    controls = {
+      color: info.color ? rgbToHex(info.color) : null,
+      width: info.width,
+      opacity: info.opacity,
+      font: info.font,
+      fontSize: info.fontSize,
+    }
   } else if (tool !== 'select') {
     controls = {
       color: rgbToHex(toolStyle.color),
       width: STROKE_TOOLS.has(tool) ? toolStyle.width : null,
       opacity: toolStyle.opacity,
+      font: tool === 'text' ? (toolStyle.font ?? 'Helv') : null,
+      fontSize: tool === 'text' ? (toolStyle.fontSize ?? 14) : null,
     }
   }
+  // A text box's contents are its text, edited on the page rather than as a comment.
+  const showComment = info && info.type !== 'FreeText'
 
   const change = (patch: Partial<AnnotStyle>) => {
     if (info) props.onUpdateSelected(patch)
@@ -87,6 +107,20 @@ export function AnnotationBar(props: Props) {
 
       <span className="toolbar__divider" />
 
+      <div className="annot-bar__tools">
+        <button className="icon-button" title="Add an image" aria-label="Add an image" onClick={props.onAddImage} disabled={busy}>
+          <Icon name="image" />
+        </button>
+        <button className="icon-button" title="Add a signature" aria-label="Add a signature" onClick={props.onAddSignature} disabled={busy}>
+          <Icon name="signature" />
+        </button>
+        <button className="icon-button" title="Add a watermark" aria-label="Add a watermark" onClick={props.onAddWatermark} disabled={busy}>
+          <Icon name="watermark" />
+        </button>
+      </div>
+
+      <span className="toolbar__divider" />
+
       {controls ? (
         <div className="annot-bar__style">
           {info && <span className="annot-bar__label">{TYPE_LABELS[info.type] ?? info.type}</span>}
@@ -105,6 +139,37 @@ export function AnnotationBar(props: Props) {
                 />
               ))}
             </div>
+          )}
+          {controls.font !== null && (
+            <select
+              className="zoom-select"
+              aria-label="Font"
+              value={controls.font}
+              disabled={busy}
+              onChange={(e) => change({ font: e.target.value as TextFont })}
+            >
+              {FONTS.map((f) => (
+                <option key={f.font} value={f.font}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          )}
+          {controls.fontSize !== null && (
+            <select
+              className="zoom-select"
+              aria-label="Font size"
+              value={FONT_SIZES.includes(controls.fontSize) ? controls.fontSize : ''}
+              disabled={busy}
+              onChange={(e) => change({ fontSize: Number(e.target.value) })}
+            >
+              {!FONT_SIZES.includes(controls.fontSize) && <option value="">{controls.fontSize} pt</option>}
+              {FONT_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {size} pt
+                </option>
+              ))}
+            </select>
           )}
           {controls.width !== null && (
             <select
@@ -138,13 +203,14 @@ export function AnnotationBar(props: Props) {
           </select>
           {info && selection && (
             <>
-              <CommentField
+              {info.type === 'FreeText' && <span className="annot-bar__hint">Double-click to edit the text</span>}
+              {showComment && <CommentField
                 key={`${selection.pageId}:${selection.annotId}`}
                 initial={info.contents}
                 autoFocus={props.focusComment}
                 disabled={busy}
                 onCommit={(contents) => props.onUpdateSelected({ contents })}
-              />
+              />}
               <button className="icon-button" onClick={props.onDeleteSelected} disabled={busy} title="Delete annotation (Del)">
                 <Icon name="trash" />
               </button>
