@@ -807,12 +807,14 @@ function appendContent(d: mupdf.PDFDocument, page: mupdf.PDFObject, content: str
   const existing = page.get('Contents')
   // Our opening q stream carries this key, so a page already wrapped by an
   // earlier edit isn't wrapped again (deep q nesting breaks some readers).
-  if (existing.isArray() && existing.length && existing.get(0).get('KloneWrap').isBoolean()) {
+  // KloneWrap is the key used before the rename; files saved then still carry it.
+  const first = existing.isArray() && existing.length ? existing.get(0) : null
+  if (first && (first.get('KwoonWrap').isBoolean() || first.get('KloneWrap').isBoolean())) {
     existing.push(d.addStream(content, {}))
     return
   }
   const contents = d.newArray()
-  contents.push(d.addStream('q', { KloneWrap: true }))
+  contents.push(d.addStream('q', { KwoonWrap: true }))
   if (existing.isArray()) existing.forEach((stream) => contents.push(stream))
   else if (!existing.isNull()) contents.push(existing)
   contents.push(d.addStream('Q', {}))
@@ -842,8 +844,8 @@ function addWatermark(indices: number[], spec: WatermarkSpec): DocState {
     const width = textWidth('Helv', spec.fontSize, spec.text)
     for (const index of indices) {
       const page = d.findPage(index)
-      const fontKey = addResource(d, page, 'Font', 'KloneWM', font)
-      const stateKey = addResource(d, page, 'ExtGState', 'KloneWMGS', state)
+      const fontKey = addResource(d, page, 'Font', 'KwoonWM', font)
+      const stateKey = addResource(d, page, 'ExtGState', 'KwoonWMGS', state)
 
       // Centre on the visible area; the page's /Rotate turns the content
       // clockwise for display, so add it to get the angle the reader sees.
@@ -893,7 +895,7 @@ function addOcrText(pages: OcrPage[]): DocState {
       if (!words.length) continue
       const page = pageById(pageId)
       const obj = page.getObject()
-      const fontKey = addResource(d, obj, 'Font', 'KloneOCR', font)
+      const fontKey = addResource(d, obj, 'Font', 'KwoonOCR', font)
       const [a, b, c, dd, e, f] = mupdf.Matrix.invert(page.getTransform())
       const toPdf = (x: number, y: number): Point => [a * x + c * y + e, b * x + dd * y + f]
       const unit = (x: number, y: number): Point => {
@@ -1008,7 +1010,7 @@ function replaceTextLine(pageId: number, line: TextLine, text: string): DocState
     eraser.applyRedaction(0, mupdf.PDFPage.REDACT_IMAGE_NONE, mupdf.PDFPage.REDACT_LINE_ART_NONE, mupdf.PDFPage.REDACT_TEXT_REMOVE)
 
     if (!text.trim()) return
-    const fontKey = addResource(d, obj, 'Font', 'KloneEdit', d.addSimpleFont(new mupdf.Font(standardFontFor(line.font))))
+    const fontKey = addResource(d, obj, 'Font', 'KwoonEdit', d.addSimpleFont(new mupdf.Font(standardFontFor(line.font))))
     const [a, b, c, dd, e, f] = mupdf.Matrix.invert(page.getTransform())
     const [ox, oy] = [a * line.origin[0] + c * line.origin[1] + e, b * line.origin[0] + dd * line.origin[1] + f]
     // Along the baseline, and "up" (display y runs down), mapped into PDF space.

@@ -4,7 +4,7 @@ const doc = new mupdf.PDFDocument()
 const helv = doc.addObject({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica', Encoding: 'WinAnsiEncoding' })
 const font = doc.addSimpleFont(new mupdf.Font('Helvetica'))
 const labels = [['Full name', 700], ['Comments', 640], ['Subscribe', 560], ['Plan', 520], ['Country', 460], ['Colour', 400]]
-let content = 'BT /F1 22 Tf 72 740 Td (Klone form test) Tj ET\n'
+let content = 'BT /F1 22 Tf 72 740 Td (Kwoon form test) Tj ET\n'
 for (const [t, y] of labels) content += `BT /F1 12 Tf 72 ${y + 4} Td (${t}) Tj ET\n`
 const pageObj = doc.addPage([0, 0, 612, 792], 0, { Font: { F1: font } }, content)
 doc.insertPage(-1, pageObj)

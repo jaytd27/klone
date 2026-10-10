@@ -2,7 +2,7 @@
 
 An open-source PDF editor that runs entirely in your browser, built on [MuPDF.js](https://mupdf.readthedocs.io/). Your files never leave your device.
 
-Live: https://kwoon.pages.dev (deployed from `main`). The repository is named `klone`, Kwoon's working name.
+Live: https://kwoon.pages.dev (deployed from `main`).
 
 ## Features
 

@@ -2,7 +2,9 @@ import { useRef, useState, type PointerEvent } from 'react'
 import { trimCanvas } from '../images'
 import { Modal } from './Modal'
 
-const STORAGE_KEY = 'klone.signatures'
+const STORAGE_KEY = 'kwoon.signatures'
+// Signatures saved before the rename live under this key; loadSaved moves them.
+const OLD_STORAGE_KEY = 'klone.signatures'
 const MAX_SAVED = 6
 const INKS = [
   { label: 'Black', value: '#1A1A1A' },
@@ -18,6 +20,11 @@ const PAD_HEIGHT = 180
 
 function loadSaved(): string[] {
   try {
+    const old = localStorage.getItem(OLD_STORAGE_KEY)
+    if (old !== null) {
+      if (localStorage.getItem(STORAGE_KEY) === null) localStorage.setItem(STORAGE_KEY, old)
+      localStorage.removeItem(OLD_STORAGE_KEY)
+    }
     const raw = localStorage.getItem(STORAGE_KEY)
     const list = raw ? JSON.parse(raw) : []
     return Array.isArray(list) ? list.filter((s) => typeof s === 'string') : []

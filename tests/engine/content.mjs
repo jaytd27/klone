@@ -10,7 +10,7 @@ const st = call({ type: 'open', data: data.buffer.slice(data.byteOffset, data.by
 const [p1] = st.pages.map((p) => p.id)
 call({ type: 'rotate', pages: [1], degrees: 90 })
 const style = { color: [0.1, 0.3, 0.8], opacity: 1, width: 2, font: 'TiRo', fontSize: 20 }
-const t = call({ type: 'createAnnot', page: p1, spec: { kind: 'text', at: [80, 230], text: 'Typed with Klone\nTwo lines' }, style })
+const t = call({ type: 'createAnnot', page: p1, spec: { kind: 'text', at: [80, 230], text: 'Typed with Kwoon\nTwo lines' }, style })
 const im = call({ type: 'createAnnot', page: p1, spec: { kind: 'image', rect: [80, 320, 200, 380], image: { rgba: new Uint8ClampedArray(60 * 30 * 4).fill(255).buffer, width: 60, height: 30 } }, style })
 let annots = call({ type: 'listAnnots', page: p1 })
 console.log(annots.map((a) => `${a.type} rect=${a.rect?.map(Math.round)} font=${a.font} size=${a.fontSize} color=${a.color?.map((c) => c.toFixed(2))}`).join('\n'))

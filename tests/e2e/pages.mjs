@@ -20,7 +20,7 @@ const summary = async (label) => console.log(label.padEnd(22), await page.evalua
   name: document.querySelector('.topbar__file .kw-badge')?.textContent,
   shapes: [...document.querySelectorAll('.thumbs .page')].map((e) => (e.offsetWidth > e.offsetHeight ? 'L' : 'P')).join(''),
 })))
-const pdfText = (bytes) => { const d = mupdf.Document.openDocument(bytes, 'application/pdf').asPDF(); const out = []; for (let i = 0; i < d.countPages(); i++) { const p = d.loadPage(i); const t = p.toStructuredText().asText().match(/Klone test page \d/)?.[0].slice(-6) ?? 'blank'; const r = p.getObject().getInheritable('Rotate'); out.push(t + (r.isNumber() && r.asNumber() ? `@${r.asNumber()}` : '')) } return out }
+const pdfText = (bytes) => { const d = mupdf.Document.openDocument(bytes, 'application/pdf').asPDF(); const out = []; for (let i = 0; i < d.countPages(); i++) { const p = d.loadPage(i); const t = p.toStructuredText().asText().match(/Kwoon test page \d/)?.[0].slice(-6) ?? 'blank'; const r = p.getObject().getInheritable('Rotate'); out.push(t + (r.isNumber() && r.asNumber() ? `@${r.asNumber()}` : '')) } return out }
 
 await page.goto(BASE)
 await page.setInputFiles('input[type=file]:not([multiple])', `${S}/test.pdf`)

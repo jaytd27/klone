@@ -1,8 +1,8 @@
 # Kwoon
 
-A full PDF editor that runs entirely in the browser (repo name `klone`, product name **Kwoon**). React 19 + TypeScript + Vite, with [MuPDF.js](https://mupdf.readthedocs.io/) (WASM, AGPL — the repo is AGPL-3.0 because of it) doing all PDF work, and Tesseract.js for OCR. Files never leave the device; keep it that way (no uploads, no third-party requests except Tesseract's engine/language data on first OCR use).
+A full PDF editor that runs entirely in the browser (repo `kwoon`). React 19 + TypeScript + Vite, with [MuPDF.js](https://mupdf.readthedocs.io/) (WASM, AGPL — the repo is AGPL-3.0 because of it) doing all PDF work, and Tesseract.js for OCR. Files never leave the device; keep it that way (no uploads, no third-party requests except Tesseract's engine/language data on first OCR use).
 
-Live: https://kwoon.pages.dev — every push to `main` deploys via `.github/workflows/deploy.yml` (Cloudflare Pages project `kwoon`). The owner works in this repo at `W:\Klone\workspaces\klone`, GitHub `jaytd27/klone`.
+Live: https://kwoon.pages.dev — every push to `main` deploys via `.github/workflows/deploy.yml` (Cloudflare Pages project `kwoon`). The owner works in this repo at `W:\Kwoon\workspaces\kwoon`, GitHub `jaytd27/kwoon`.
 
 ## Commands
 
@@ -44,7 +44,7 @@ Rules that matter: dark is default (light/system via `src/theme/theme.ts`); viol
 - `applyRedactions()` leaves some annotation types (notes) and form fields under a mark; `applyRedactions` in the worker deletes overlapping annotations and clears/removes overlapping fields itself. `PDFAnnotation.applyRedaction()` applies a single mark (used to erase one line when editing text).
 - PNG alpha is dropped when MuPDF stores an image; build images as colour pixmap + gray mask (`buildImage`).
 - **Acrobat compatibility** (`makePortable`, run on create and on export): soft masks must be `DeviceGray` (MuPDF writes ICC gray → Acrobat says "an error exists on this page" and drops the image); `setIntent('StampImage')` writes `/IT null`; new FreeText annotations get a stray `/CL` callout from the page corner, re-added on every `setRect`. MuPDF itself tolerates all of these, so check structure, not just rendering.
-- Text added by Kwoon (text boxes, watermarks, OCR, edited lines) uses the 14 standard fonts with WinAnsi encoding: Latin only. `appendContent` wraps existing page content in q/Q once (marked `/KloneWrap`) — don't wrap repeatedly.
+- Text added by Kwoon (text boxes, watermarks, OCR, edited lines) uses the 14 standard fonts with WinAnsi encoding: Latin only. `appendContent` wraps existing page content in q/Q once (marked `/KwoonWrap`; files saved before the rename carry `/KloneWrap`, still recognised) — don't wrap repeatedly.
 - `setChoiceValue` wants the option's *export* value.
 
 ## Testing notes
