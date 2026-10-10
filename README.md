@@ -33,8 +33,11 @@ The interface uses the **Graphite** theme: dark by default with light and system
 
 ```sh
 npm install
-npm run dev
+npm run dev      # http://localhost:5173
+npm test         # fixtures, engine tests and browser tests (uses a local Chrome)
 ```
+
+See `CLAUDE.md` for architecture notes, MuPDF quirks and testing details.
 
 ## License
 
