@@ -228,6 +228,7 @@ function toTransferable(buffer: mupdf.Buffer): Uint8Array<ArrayBuffer> {
 }
 
 function save(): Uint8Array<ArrayBuffer> {
+  repairForExport()
   const bytes = toTransferable(requireDoc().saveToBuffer('garbage,compress'))
   savedPosition = journalPosition()
   editedPages.clear()
@@ -469,6 +470,67 @@ function normalizeRect([x0, y0, x1, y1]: mupdf.Rect): mupdf.Rect {
   return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]
 }
 
+/**
+ * Fixes things MuPDF writes that stricter readers (notably Adobe Acrobat)
+ * reject or misdraw, and returns whether anything needed fixing. With
+ * `apply` false it only checks.
+ *
+ * - Image soft masks must use DeviceGray (ISO 32000 §11.6.5.3); MuPDF gives
+ *   them an ICC-based gray profile, and Acrobat then reports "an error
+ *   exists on this page" and drops the image.
+ * - New text boxes get a callout line from the page corner (/CL) that
+ *   nobody asked for; it only belongs on callout-style text boxes.
+ * - setIntent('StampImage') writes /IT null instead of a name.
+ */
+function makePortable(annot: mupdf.PDFAnnotation, apply = true): boolean {
+  const d = requireDoc()
+  const obj = annot.getObject()
+  let needed = false
+  const fix = (action: () => void) => {
+    needed = true
+    if (apply) action()
+  }
+  const type = annot.getType()
+  if (type === 'FreeText' && !obj.get('CL').isNull() && obj.get('IT').asName() !== 'FreeTextCallout') {
+    fix(() => obj.delete('CL'))
+  }
+  if (type === 'Stamp') {
+    const xobjects = obj.get('AP').get('N').get('Resources').get('XObject')
+    // (PDFObject.length counts array items only, so count dictionary entries.)
+    let images = 0
+    if (xobjects.isDictionary()) xobjects.forEach(() => images++)
+    const isImage = images > 0
+    const intent = obj.get('IT')
+    if (!intent.isNull() && !intent.isName()) fix(() => obj.delete('IT'))
+    if (isImage && !(intent.isName() && intent.asName() === 'StampImage')) fix(() => obj.put('IT', d.newName('StampImage')))
+    if (isImage) {
+      xobjects.forEach((image) => {
+        const mask = image.get('SMask')
+        if (!mask.isNull() && mask.get('ColorSpace').asName() !== 'DeviceGray') fix(() => mask.put('ColorSpace', d.newName('DeviceGray')))
+      })
+    }
+  }
+  return needed
+}
+
+/** Runs makePortable over every annotation (e.g. ones made by older Kwoon versions) before export. */
+function repairForExport() {
+  const d = requireDoc()
+  const annots: mupdf.PDFAnnotation[] = []
+  for (let i = 0; i < d.countPages(); i++) annots.push(...loadPage(i).getAnnotations())
+  if (!annots.some((a) => makePortable(a, false))) return
+  d.beginOperation('Prepare for export')
+  try {
+    for (const annot of annots) makePortable(annot)
+    d.endOperation()
+  } catch (err) {
+    d.abandonOperation()
+    throw err
+  } finally {
+    clearPageCache()
+  }
+}
+
 /** Builds an image, keeping transparency as a separate soft mask. */
 function buildImage(payload: ImagePayload): mupdf.Image {
   if ('jpeg' in payload) return new mupdf.Image(payload.jpeg)
@@ -560,7 +622,6 @@ function createAnnot(pageId: number, spec: AnnotSpec, style: AnnotStyle): { stat
           const image = buildImage(spec.image)
           try {
             annot.setRect(normalizeRect(spec.rect))
-            annot.setIntent('StampImage')
             annot.setStampImage(image)
           } finally {
             image.destroy()
@@ -569,6 +630,7 @@ function createAnnot(pageId: number, spec: AnnotSpec, style: AnnotStyle): { stat
         }
       }
       annot.update()
+      makePortable(annot)
       created = annot.getObject().asIndirect()
     },
     pageId,
@@ -620,6 +682,7 @@ function updateAnnot(pageId: number, annotId: number, patch: AnnotPatch): DocSta
       if (patch.offset) moveAnnot(annot, patch.offset)
       if (patch.rect && annot.hasRect()) annot.setRect(normalizeRect(patch.rect))
       annot.update()
+      makePortable(annot)
     },
     pageId,
   )
