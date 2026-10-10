@@ -321,8 +321,27 @@
 .kw-progress { height: 4px; border-radius: var(--kw-radius-pill); background: var(--kw-border-default); overflow: hidden; }
 .kw-progress__bar { height: 100%; background: var(--kw-accent); border-radius: inherit; transition: width var(--kw-duration-slow) var(--kw-ease-standard); }
 
-/* ---------- Logo mark (inline SVG with class="kw-mark") ---------- */
-.kw-mark .kw-mark__body { fill: var(--kw-logo-fill); }
-.kw-mark .kw-mark__shade { fill: var(--kw-logo-shade); }
-.kw-mark .kw-mark__feature { fill: var(--kw-logo-feature); }
-.kw-mark .kw-mark__whisker { stroke: var(--kw-logo-whisker); }
+/* ---------- Logo mark (inline logo/kwoon-mark-themed.svg, class="kw-mark") ---------- */
+.kw-mark .kw-mark__moon   { fill: var(--kw-logo-moon); }
+.kw-mark .kw-mark__crater { fill: var(--kw-logo-crater); }
+.kw-mark .kw-mark__page   { fill: var(--kw-logo-page); }
+.kw-mark .kw-mark__fold   { fill: var(--kw-logo-fold); }
+.kw-mark .kw-mark__k      { stroke: var(--kw-logo-k); }
+.kw-mark .kw-mark__pole   { stroke: var(--kw-logo-pole); }
+
+/* ---------- Wordmark (text) ---------- */
+.kw-wordmark {
+  font-family: var(--kw-font-display); font-weight: var(--kw-weight-bold);
+  letter-spacing: var(--kw-tracking-display); color: var(--kw-text-primary); line-height: 1;
+}
+.kw-wordmark--display { letter-spacing: -0.04em; }      /* 24 px and up */
+.kw-wordmark__oo { color: var(--kw-accent); }           /* <span class="kw-wordmark">Kw<span class="kw-wordmark__oo">oo</span>n</span> */
+.kw-tagline {
+  font-family: var(--kw-font-mono); font-weight: var(--kw-weight-medium);
+  font-size: var(--kw-text-2xs); letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--kw-text-secondary);
+}
+.kw-lockup { display: inline-flex; align-items: center; gap: 0.55em; }  /* gap ≈ one "o" at the wordmark size */
+.kw-lockup .kw-mark { width: 1.3em; height: 1.3em; flex-shrink: 0; }
+.kw-lockup--stacked { flex-direction: column; gap: 0.3em; text-align: center; }
+.kw-lockup--stacked .kw-mark { width: 1.9em; height: 1.9em; }

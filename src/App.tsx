@@ -5,7 +5,7 @@ import { MODES, TOOL_MODES, type Mode } from './annotations/modes'
 import { DEFAULT_STYLES, type DrawingTool, type Tool } from './annotations/tools'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { Inspector, type CommentEntry } from './components/Inspector'
-import { Logo } from './components/Logo'
+import { StackedLockup } from './components/Logo'
 import { OcrDialog } from './components/OcrDialog'
 import { ApplyRedactionsDialog, FindRedactDialog, UnappliedRedactionsDialog } from './components/RedactionDialogs'
 import { Sidebar } from './components/Sidebar'
@@ -32,6 +32,7 @@ import type {
   WatermarkSpec,
 } from './pdf/protocol'
 import { THEME_LABELS, getThemeMode, setThemeMode, type ThemeMode } from './theme/theme'
+import { brand } from './theme/tokens'
 import { MAX_SCALE, MIN_SCALE, ZOOM_PRESETS, clampScale } from './zoom'
 
 interface OpenDocument extends DocState {
@@ -232,7 +233,7 @@ export default function App() {
         if (!state) {
           // Password prompt cancelled; the worker has already swapped documents.
           setDoc(null)
-          document.title = 'Kwoon'
+          document.title = brand.name
           return
         }
         setDoc((prev) => ({ ...state, key: (prev?.key ?? 0) + 1, name: file.name, size: file.size }))
@@ -243,7 +244,7 @@ export default function App() {
         setSearchHits([])
         setMode('view')
         setTool('select')
-        document.title = `${file.name} – Kwoon`
+        document.title = `${file.name} — ${brand.name}`
         // A document with no text at all is almost certainly a scan.
         const stats = await pdf.textStats()
         if (stats.length && stats.every((s) => s.chars === 0)) {
@@ -644,9 +645,9 @@ export default function App() {
     { id: 'inspector', label: inspectorOpen ? 'Hide the inspector' : 'Show the inspector', icon: 'inspector', disabled: !doc, run: () => setInspectorOpen((o) => !o) },
     ...(['dark', 'light', 'system'] as ThemeMode[]).map((m) => ({
       id: `theme-${m}`,
-      label: `Theme: ${THEME_LABELS[m]}`,
+      label: `Appearance: ${THEME_LABELS[m]}`,
       icon: (m === 'dark' ? 'moon' : m === 'light' ? 'sun' : 'monitor') as 'moon',
-      keywords: 'appearance colour',
+      keywords: 'theme colour dark light',
       disabled: theme === m,
       run: () => changeTheme(m),
     })),
@@ -847,12 +848,14 @@ export default function App() {
             </>
           ) : (
             <div className="empty-state">
-              <Logo size={96} className={busy ? 'kw-mark--blink' : ''} />
-              <h1>{busy ? 'Opening…' : 'Drop a PDF here'}</h1>
-              <p className="kw-muted">Or choose one from your computer. Everything happens in this browser; your files stay on your device.</p>
-              <button className="kw-btn kw-btn--primary kw-btn--lg" onClick={() => fileInputRef.current?.click()} disabled={busy}>
-                <span>Choose a PDF</span>
-              </button>
+              <StackedLockup loading={busy} />
+              <div className="kw-dropzone empty-state__drop">
+                <h1>{busy ? 'Opening…' : 'Drop a PDF here'}</h1>
+                <p className="kw-muted">Or choose one from your computer. Everything happens in this browser; your files stay on your device.</p>
+                <button className="kw-btn kw-btn--primary kw-btn--lg" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                  <span>Choose a PDF</span>
+                </button>
+              </div>
             </div>
           )}
         </main>

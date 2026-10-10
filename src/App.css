@@ -153,6 +153,38 @@
   flex-direction: column;
 }
 
+/* ---------- Top bar: brand and appearance ---------- */
+
+.topbar__brand {
+  font-size: 19px;
+  color: var(--kw-text-primary);
+  white-space: nowrap;
+}
+
+.topbar__brand:hover {
+  text-decoration: none;
+}
+
+.topbar__brand .kw-mark {
+  width: 26px;
+  height: 26px;
+}
+
+.appearance {
+  position: relative;
+}
+
+.appearance__menu {
+  left: auto;
+  right: 0;
+  z-index: var(--kw-z-popover);
+}
+
+.appearance__check {
+  display: inline-flex;
+  margin-left: auto;
+}
+
 .page-input {
   display: inline-flex;
   align-items: center;
@@ -414,8 +446,25 @@
   text-align: center;
 }
 
+.empty-state .kw-lockup--stacked {
+  font-size: var(--kw-text-4xl);
+}
+
+/* Neutral at rest: violet is for state, and the drop overlay turns violet while a file is dragged in. */
+.empty-state .kw-dropzone.empty-state__drop {
+  flex-direction: column;
+  gap: var(--kw-space-6);
+  max-width: 520px;
+  padding: var(--kw-space-9) var(--kw-space-10);
+  border-color: var(--kw-border-strong);
+  border-radius: var(--kw-radius-lg);
+  background: transparent;
+  color: var(--kw-text-primary);
+  font-weight: var(--kw-weight-regular);
+}
+
 .empty-state h1 {
-  font-size: var(--kw-text-3xl);
+  font-size: var(--kw-text-2xl);
 }
 
 .empty-state p {
@@ -423,28 +472,37 @@
   font-size: var(--kw-text-md);
 }
 
-/* The cat may blink: eyes squash 1 → 0.1 → 1 over 180 ms every 3 s. */
-.kw-mark--blink .kw-mark__eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: kw-blink 3s var(--kw-ease-spring) infinite;
+/* Loader: the crescent waxes as its inner cut-out slides over 3 s, and the K page rises 4 px into place. */
+.kw-mark--loading .kw-mark__cut {
+  animation: kw-wax 3s var(--kw-ease-standard) infinite;
 }
 
-@keyframes kw-blink {
+.kw-mark--loading .kw-mark__planted {
+  animation: kw-rise var(--kw-duration-slow) var(--kw-ease-spring) both;
+}
+
+@keyframes kw-wax {
   0%,
-  94% {
-    transform: scaleY(1);
-  }
-  97% {
-    transform: scaleY(0.1);
-  }
   100% {
-    transform: scaleY(1);
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+}
+
+@keyframes kw-rise {
+  from {
+    transform: translateY(4px);
+  }
+  to {
+    transform: translateY(0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kw-mark--blink .kw-mark__eyes,
+  .kw-mark--loading .kw-mark__cut,
+  .kw-mark--loading .kw-mark__planted,
   .page--loading::after {
     animation: none;
   }

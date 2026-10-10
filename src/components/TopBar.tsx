@@ -1,9 +1,9 @@
-import { useState, type RefObject } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 import { MODES, type Mode } from '../annotations/modes'
 import { THEME_LABELS, type ThemeMode } from '../theme/theme'
 import { Icon, type IconName } from './Icon'
 import { formatBytes } from '../format'
-import { Logo } from './Logo'
+import { Logo, Wordmark } from './Logo'
 
 export interface SearchState {
   query: string
@@ -40,14 +40,13 @@ export function TopBar(props: Props) {
   const { onModeChange, onSearch, onSearchStep, onSearchClear, onOpen, onExport, onCommand, onThemeChange } = props
   const [draft, setDraft] = useState(search.query)
   const hasDoc = fileName !== null
-  const nextTheme = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]
 
   return (
     <header className="kw-topbar topbar">
-      <div className="kw-topbar__brand">
-        <Logo size={26} label="Kwoon" />
-        <span className="topbar__name">Kwoon</span>
-      </div>
+      <a className="kw-lockup topbar__brand" href="/">
+        <Logo />
+        <Wordmark className="topbar__name" />
+      </a>
 
       {hasDoc && (
         <div className="topbar__file">
@@ -128,14 +127,7 @@ export function TopBar(props: Props) {
         <button className="kw-btn kw-btn--secondary kw-btn--icon" aria-label="Command bar (Ctrl+K)" title="Do anything… (Ctrl+K)" onClick={onCommand}>
           <Icon name="command" />
         </button>
-        <button
-          className="kw-btn kw-btn--ghost kw-btn--icon"
-          aria-label={`Theme: ${THEME_LABELS[theme]}. Switch to ${THEME_LABELS[nextTheme]}`}
-          title={`Theme: ${THEME_LABELS[theme]}`}
-          onClick={() => onThemeChange(nextTheme)}
-        >
-          <Icon name={THEME_ICONS[theme]} />
-        </button>
+        <AppearanceMenu theme={theme} onThemeChange={onThemeChange} />
         <span className="kw-divider topbar__divider" />
         <button className="kw-btn kw-btn--secondary" onClick={onOpen} disabled={busy} title="Open a PDF (Ctrl+O)">
           <Icon name="open" />
@@ -149,5 +141,60 @@ export function TopBar(props: Props) {
         )}
       </div>
     </header>
+  )
+}
+
+function AppearanceMenu({ theme, onThemeChange }: { theme: ThemeMode; onThemeChange(mode: ThemeMode): void }) {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    const closeOnEscape = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [open])
+
+  return (
+    <div className="appearance" onPointerDown={(e) => e.stopPropagation()}>
+      <button
+        className="kw-btn kw-btn--ghost kw-btn--icon"
+        aria-label={`Appearance: ${THEME_LABELS[theme]}`}
+        title={`Appearance: ${THEME_LABELS[theme]}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name={THEME_ICONS[theme]} />
+      </button>
+      {open && (
+        <div className="kw-popover menu appearance__menu" role="menu" aria-label="Appearance">
+          {THEME_ORDER.map((m) => (
+            <button
+              key={m}
+              className="kw-menu__item"
+              role="menuitemradio"
+              aria-checked={theme === m}
+              onClick={() => {
+                setOpen(false)
+                onThemeChange(m)
+              }}
+            >
+              <Icon name={THEME_ICONS[m]} />
+              {THEME_LABELS[m]}
+              {theme === m && (
+                <span className="appearance__check">
+                  <Icon name="check" />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

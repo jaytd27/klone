@@ -1,3 +1,5 @@
+import { brand } from './tokens'
+
 /** Theme mode handling. Graphite is dark by default; light and "follow the OS" are opt-in. */
 
 export type ThemeMode = 'dark' | 'light' | 'system'
@@ -25,4 +27,5 @@ export function setThemeMode(mode: ThemeMode) {
   }
 }
 
-export const THEME_LABELS: Record<ThemeMode, string> = { dark: 'Dark', light: 'Light', system: 'System' }
+/** What the interface calls each mode: Moonlit, Daylight, Follow system. */
+export const THEME_LABELS: Record<ThemeMode, string> = brand.themeNames

@@ -27,7 +27,7 @@ Live: https://kwoon.pages.dev (deployed from `main`). The repository is named `k
 
 ## Design
 
-The interface uses the **Graphite** theme: dark by default with light and system modes, a single violet accent for state, Space Grotesk / IBM Plex Sans / IBM Plex Mono (self-hosted via Fontsource), and the paper-cat mark. Tokens and component styles live in `src/theme/`; see the design guidelines that came with the theme package for the reasoning.
+The interface uses the **Graphite** theme (Kwoon theme package v2): Moonlit (dark) by default, with Daylight (light) and Follow system, a single violet accent for state, Space Grotesk / IBM Plex Sans / IBM Plex Mono (self-hosted via Fontsource), and the crescent-and-K mark with the tagline *A moonlit home for your documents*. Tokens and component styles live in `src/theme/`; see the design guidelines that came with the theme package for the reasoning.
 
 ## Development
 

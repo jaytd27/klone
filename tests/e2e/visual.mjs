@@ -21,8 +21,9 @@ await page.mouse.click(r.x + 200 * s, r.y + 175 * s); await page.waitForTimeout(
 for (const m of ['Edit', 'Organize', 'Sign', 'Protect']) { await page.click(`.kw-segmented__item >> text=${m}`); await page.waitForTimeout(300); await shot(`04-mode-${m.toLowerCase()}`) }
 await page.fill('[aria-label="Search the document"]', 'lazy'); await page.keyboard.press('Enter'); await page.waitForTimeout(800); await shot('05-search')
 await page.keyboard.press('Control+k'); await page.waitForTimeout(300); await page.keyboard.type('ocr'); await page.waitForTimeout(200); await shot('06-command'); await page.keyboard.press('Escape')
-await page.click('[aria-label^="Theme:"]'); await page.waitForTimeout(500); await shot('07-light')
-await page.click('[aria-label^="Theme:"]'); await page.waitForTimeout(200); await page.click('[aria-label^="Theme:"]'); await page.waitForTimeout(200)
+const appearance = async (name) => { await page.click('[aria-label^="Appearance:"]'); await page.click(`[role=menuitemradio] >> text=${name}`) }
+await page.click('[aria-label^="Appearance:"]'); await page.waitForTimeout(200); await shot('07-appearance-menu'); await page.click('[role=menuitemradio] >> text=Daylight'); await page.waitForTimeout(500); await shot('07-light')
+await appearance('Follow system'); await page.waitForTimeout(200); await appearance('Moonlit'); await page.waitForTimeout(200)
 console.log('theme attr now:', await page.evaluate(() => document.documentElement.getAttribute('data-theme')))
 await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(800); await shot('08-mobile')
 console.log('mobile hscroll:', await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth))
